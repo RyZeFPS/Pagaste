@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_WITH_APPLE_TEAM_ID.app.pagaste.mobile"],
+        "components": [
+          { "/": "/c/*", "comment": "Enlaces individuales de cobro" },
+          { "/": "/invite/*", "comment": "Invitaciones a grupos" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["REPLACE_WITH_APPLE_TEAM_ID.app.pagaste.mobile"]
+  }
+}

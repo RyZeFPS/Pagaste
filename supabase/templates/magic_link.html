@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tu código de Pagaste</title>
+  </head>
+  <body style="margin: 0; background: #f6f8fc; color: #14213d; font-family: Arial, sans-serif">
+    <main style="max-width: 520px; margin: 0 auto; padding: 40px 24px">
+      <div style="background: #fff; border: 1px solid #dfe6f2; border-radius: 18px; padding: 32px">
+        <p style="margin: 0 0 20px; color: #2563eb; font-size: 22px; font-weight: 700">Pagaste</p>
+        <h1 style="margin: 0 0 12px; font-size: 24px">Tu código para entrar</h1>
+        <p style="margin: 0 0 24px; line-height: 1.5">
+          Introduce este código de un solo uso en Pagaste. Caduca en una hora.
+        </p>
+        <p
+          style="
+            margin: 0 0 24px;
+            padding: 18px;
+            border-radius: 12px;
+            background: #eff6ff;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            text-align: center;
+          "
+        >
+          {{ .Token }}
+        </p>
+        <p style="margin: 0; color: #5c667a; font-size: 14px; line-height: 1.5">
+          Si no solicitaste este acceso, ignora el mensaje. No compartas el código con nadie.
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

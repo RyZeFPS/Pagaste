@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#1769e8" />
+    <title>Pagaste</title>
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #f5f7fb;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+      .pagaste-boot {
+        flex: 1;
+        overflow: auto;
+        background: #f5f7fb;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .pagaste-boot__content {
+        width: calc(100% - 40px);
+        max-width: 460px;
+        margin: 0 auto;
+        padding: 24px 0 116px;
+      }
+      .pagaste-boot__stack {
+        display: grid;
+        gap: 16px;
+      }
+      .pagaste-boot__shimmer {
+        background: linear-gradient(100deg, #e7eaf0 25%, #f9fafc 42%, #e7eaf0 60%);
+        background-size: 300% 100%;
+        animation: pagaste-shimmer 1.35s ease-in-out infinite;
+      }
+      .pagaste-boot__header,
+      .pagaste-boot__section {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .pagaste-boot__header {
+        min-height: 62px;
+      }
+      .pagaste-boot__identity {
+        display: grid;
+        gap: 8px;
+      }
+      .pagaste-boot__line {
+        height: 12px;
+        border-radius: 999px;
+      }
+      .pagaste-boot__circle {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+      }
+      .pagaste-boot__hero {
+        box-sizing: border-box;
+        min-height: 238px;
+        padding: 20px;
+        border-radius: 24px;
+        background: #eaf2ff;
+      }
+      .pagaste-boot__hero-copy {
+        display: grid;
+        gap: 12px;
+      }
+      .pagaste-boot__hero-button {
+        height: 58px;
+        margin-top: 92px;
+        border-radius: 16px;
+      }
+      .pagaste-boot__section {
+        min-height: 28px;
+      }
+      .pagaste-boot__metrics {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: 1fr 1.08fr;
+        min-height: 158px;
+        padding: 7px;
+        gap: 7px;
+        border: 1px solid #eef0f4;
+        border-radius: 22px;
+        background: #fff;
+      }
+      .pagaste-boot__metric {
+        border-radius: 17px;
+      }
+      .pagaste-boot__metric:first-child {
+        background: #eaf2ff;
+      }
+      .pagaste-boot__metric-stack {
+        display: grid;
+        padding: 8px;
+        gap: 10px;
+      }
+      .pagaste-boot__row {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        min-height: 78px;
+        padding: 12px;
+        gap: 12px;
+        background: #fff;
+      }
+      .pagaste-boot__row:first-child {
+        border-radius: 20px 20px 0 0;
+        border-bottom: 1px solid #eef0f4;
+      }
+      .pagaste-boot__row:last-child {
+        border-radius: 0 0 20px 20px;
+      }
+      .pagaste-boot__row-copy {
+        flex: 1;
+        display: grid;
+        gap: 8px;
+      }
+      .pagaste-boot__tabbar {
+        position: fixed;
+        z-index: 2;
+        left: 50%;
+        bottom: 12px;
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        width: 92%;
+        max-width: 480px;
+        min-height: 74px;
+        padding: 12px 18px;
+        gap: 20px;
+        transform: translateX(-50%);
+        border: 1px solid #e7eaf0;
+        border-radius: 22px;
+        background: #fff;
+        box-shadow: 0 6px 20px rgba(17, 24, 39, 0.07);
+      }
+      .pagaste-boot__tab {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+      }
+      .pagaste-boot__tab-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+      }
+      @keyframes pagaste-shimmer {
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: -100% 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .pagaste-boot__shimmer {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>Necesitas activar JavaScript para utilizar Pagaste.</noscript>
+    <div id="root">
+      <main
+        class="pagaste-boot"
+        role="progressbar"
+        aria-label="Preparando Pagaste"
+        aria-busy="true"
+      >
+        <div class="pagaste-boot__content" aria-hidden="true">
+          <div class="pagaste-boot__stack">
+            <div class="pagaste-boot__header">
+              <div class="pagaste-boot__identity">
+                <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 112px"></div>
+                <div
+                  class="pagaste-boot__line pagaste-boot__shimmer"
+                  style="width: 142px; height: 29px"
+                ></div>
+              </div>
+              <div class="pagaste-boot__circle pagaste-boot__shimmer"></div>
+            </div>
+            <div class="pagaste-boot__hero">
+              <div class="pagaste-boot__hero-copy">
+                <div
+                  class="pagaste-boot__line pagaste-boot__shimmer"
+                  style="width: 58%; height: 20px"
+                ></div>
+                <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 72%"></div>
+                <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 52%"></div>
+              </div>
+              <div class="pagaste-boot__hero-button pagaste-boot__shimmer"></div>
+            </div>
+            <div class="pagaste-boot__section">
+              <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 84px"></div>
+              <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 54px"></div>
+            </div>
+            <div class="pagaste-boot__metrics">
+              <div class="pagaste-boot__metric"></div>
+              <div class="pagaste-boot__metric-stack">
+                <div class="pagaste-boot__line pagaste-boot__shimmer"></div>
+                <div class="pagaste-boot__line pagaste-boot__shimmer"></div>
+                <div class="pagaste-boot__line pagaste-boot__shimmer"></div>
+                <div class="pagaste-boot__line pagaste-boot__shimmer"></div>
+              </div>
+            </div>
+            <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 148px"></div>
+            <div>
+              <div class="pagaste-boot__row">
+                <div class="pagaste-boot__circle pagaste-boot__shimmer"></div>
+                <div class="pagaste-boot__row-copy">
+                  <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 72%"></div>
+                  <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 48%"></div>
+                </div>
+              </div>
+              <div class="pagaste-boot__row">
+                <div class="pagaste-boot__circle pagaste-boot__shimmer"></div>
+                <div class="pagaste-boot__row-copy">
+                  <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 64%"></div>
+                  <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 42%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pagaste-boot__tabbar" aria-hidden="true">
+          <div class="pagaste-boot__tab">
+            <div class="pagaste-boot__tab-icon pagaste-boot__shimmer"></div>
+            <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 50px"></div>
+          </div>
+          <div class="pagaste-boot__tab">
+            <div class="pagaste-boot__tab-icon pagaste-boot__shimmer"></div>
+            <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 42px"></div>
+          </div>
+          <div class="pagaste-boot__tab">
+            <div class="pagaste-boot__tab-icon pagaste-boot__shimmer"></div>
+            <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 44px"></div>
+          </div>
+          <div class="pagaste-boot__tab">
+            <div class="pagaste-boot__tab-icon pagaste-boot__shimmer"></div>
+            <div class="pagaste-boot__line pagaste-boot__shimmer" style="width: 42px"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

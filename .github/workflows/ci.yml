@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec expo install --check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check Supabase Edge Functions
+        run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/playwright
+          if-no-files-found: ignore
+          retention-days: 7
+      - run: pnpm build:web:release
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+          EXPO_PUBLIC_APP_URL: https://ci.pagaste.example
+      - run: pnpm test:e2e:production
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start local Supabase database
+        run: >-
+          pnpm exec supabase start -x
+          analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector
+      - run: pnpm supabase:reset
+      - run: pnpm test:db
+      - name: Stop local Supabase
+        if: always()
+        run: pnpm supabase:stop

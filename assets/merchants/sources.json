@@ -1,0 +1,35 @@
+{
+  "retrievedAt": "2026-07-22",
+  "assets": {
+    "mercadona": {
+      "officialDomain": "mercadona.es",
+      "source": "https://www.mercadona.es/favicon.ico",
+      "variant": "official site icon"
+    },
+    "alcampo": {
+      "officialDomain": "alcampo.es",
+      "source": "https://www.alcampo.es/favicon.ico",
+      "variant": "official site icon"
+    },
+    "dia": {
+      "officialDomain": "dia.es",
+      "source": "https://www.dia.es/content-manager/image/Logos_footer_header/web_logo.svg",
+      "variant": "official full-color mark"
+    },
+    "lidl": {
+      "officialDomain": "lidl.es",
+      "source": "https://www.lidl.es/cdn/assets/logos/1.0.1/lidl-logo-shop-cdn.svg",
+      "variant": "official full-color mark"
+    },
+    "froiz": {
+      "officialDomain": "froiz.es",
+      "source": "https://froiz.es/wp-content/uploads/2025/07/cropped-cropped-LOGO_FROIZ_WEB.png",
+      "variant": "official site wordmark"
+    },
+    "repsol": {
+      "officialDomain": "repsol.design",
+      "source": "https://www.repsol.design/content/dam/repsol-design/recursos/imagenes-de-cards/Repsol_Logotipo_Lockup_Color_Principal_Positivo_RGB_H.png",
+      "variant": "2026 principal positive RGB lockup; compact view shows the symbol"
+    }
+  }
+}
