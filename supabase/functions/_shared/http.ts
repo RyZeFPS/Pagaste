@@ -14,21 +14,34 @@ export class ApiError extends Error {
   }
 }
 
-function allowedOrigin(req: Request): string {
+function normalizeConfiguredOrigin(entry: string): string | undefined {
+  const value = entry.trim().replace(/^ALLOWED_ORIGINS\s*=\s*/u, '');
+  if (value === '*') return value;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+      return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function allowedOrigin(req: Request): string | undefined {
   const origin = req.headers.get('origin');
   if (!origin) return '*';
-  const configured = Deno.env
-    .get('ALLOWED_ORIGINS')
-    ?.split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (!configured?.length || configured.includes('*')) return '*';
-  return configured.includes(origin) ? origin : (configured[0] ?? 'null');
+  const raw = Deno.env.get('ALLOWED_ORIGINS')?.trim();
+  if (!raw) return '*';
+  const configured = raw
+    .split(',')
+    .map(normalizeConfiguredOrigin)
+    .filter((entry): entry is string => Boolean(entry));
+  if (configured.includes('*')) return '*';
+  return configured.includes(origin) ? origin : undefined;
 }
 
 export function corsHeaders(req: Request): HeadersInit {
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin(req),
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Headers':
       'authorization, x-client-info, apikey, content-type, x-internal-secret',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -37,6 +50,9 @@ export function corsHeaders(req: Request): HeadersInit {
     'Cache-Control': 'no-store',
     Vary: 'Origin',
   };
+  const origin = allowedOrigin(req);
+  if (origin) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
 }
 
 export function json<T>(req: Request, status: number, payload: ApiEnvelope<T>): Response {
@@ -61,11 +77,17 @@ function databaseCode(message: string): string | undefined {
     'PAYER_REQUIRED',
     'ITEM_TOTAL_MISMATCH',
     'ALLOCATIONS_MISMATCH',
+    'ALLOCATION_METHOD_MISMATCH',
+    'ALLOCATION_PARTICIPANT_MISMATCH',
     'DEBT_TOTAL_MISMATCH',
     'CLAIM_AMOUNTS_MISMATCH',
     'CLAIM_NOT_FOUND',
     'NOT_CLAIM_CREDITOR',
+    'NOT_CLAIM_DEBTOR',
+    'CLAIM_RECIPIENT_NOT_LINKED',
     'CLAIM_STATE_NOT_ALLOWED',
+    'PAYMENT_CHECK_TOO_EARLY',
+    'PAYMENT_CHECK_TOO_SOON',
     'REMINDER_NOT_ALLOWED',
     'REMINDER_TOO_SOON',
     'RECEIVED_CLAIM_CANNOT_BE_REVOKED',
@@ -80,6 +102,30 @@ function databaseCode(message: string): string | undefined {
   return stableCodes.find((code) => message.includes(code));
 }
 
+function databaseMessage(code: string): string {
+  const messages: Record<string, string> = {
+    AUTH_REQUIRED: 'Inicia sesión para continuar.',
+    EXPENSE_NOT_FOUND: 'Este gasto ya no está disponible.',
+    NOT_EXPENSE_OWNER: 'Solo quien creó el gasto puede enviar las solicitudes.',
+    EXPENSE_NOT_DRAFT: 'Este gasto ya no está en borrador.',
+    INVALID_TOTAL: 'El total del gasto no es válido.',
+    PAYER_REQUIRED: 'Falta indicar quién pagó el gasto.',
+    ITEM_TOTAL_MISMATCH: 'Los productos no coinciden con el total del gasto.',
+    ALLOCATIONS_MISMATCH: 'El reparto de uno o más productos no coincide con su importe.',
+    ALLOCATION_METHOD_MISMATCH: 'Uno de los productos tiene un método de reparto incoherente.',
+    ALLOCATION_PARTICIPANT_MISMATCH: 'El reparto contiene una persona que no pertenece al gasto.',
+    DEBT_TOTAL_MISMATCH: 'La suma de las partes no coincide con el total del gasto.',
+    CLAIM_AMOUNTS_MISMATCH: 'Las cantidades a solicitar no coinciden con el reparto.',
+    NOT_CLAIM_DEBTOR: 'Solo quien debe este importe puede enviar el aviso.',
+    CLAIM_RECIPIENT_NOT_LINKED:
+      'La persona que debe revisar el ingreso no tiene una cuenta vinculada.',
+    PAYMENT_CHECK_TOO_EARLY: 'Podrás enviar este aviso 10 minutos después de la solicitud.',
+    PAYMENT_CHECK_TOO_SOON:
+      'Ya has enviado un aviso recientemente. Podrás repetirlo dentro de 24 horas.',
+  };
+  return messages[code] ?? code;
+}
+
 export function fromDatabaseError(
   error: { message: string; code?: string } | null,
   fallback: string,
@@ -92,10 +138,10 @@ export function fromDatabaseError(
       ? 403
       : code === 'OCR_LIMIT_REACHED'
         ? 429
-        : code.includes('STATE') || code.includes('TOO_SOON') || code.includes('NOT_ACTIVE')
+        : code.includes('STATE') || code.includes('TOO_') || code.includes('NOT_ACTIVE')
           ? 409
           : 400;
-  return new ApiError(code, code, status);
+  return new ApiError(code, databaseMessage(code), status);
 }
 
 export async function readJson(req: Request): Promise<unknown> {

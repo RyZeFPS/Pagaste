@@ -8,10 +8,10 @@ import {
   Copy,
   Landmark,
   Phone,
-  ReceiptText,
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react-native';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   AppButton,
   AppInput,
@@ -103,12 +103,7 @@ export default function PublicClaimScreen() {
   return (
     <ScreenContainer publicPage contentContainerStyle={styles.screenContent}>
       <View style={styles.brand}>
-        <View style={[styles.brandMark, { backgroundColor: palette.primary }]}>
-          <ReceiptText color={palette.white} size={22} />
-        </View>
-        <AppText variant="screenTitle" color={palette.primary}>
-          Pagaste
-        </AppText>
+        <BrandLogo variant="horizontal" width={190} testID="pagaste-brand-logo" />
         <AppText variant="caption" color={palette.textSecondary}>
           Enlace privado de cobro
         </AppText>
@@ -368,13 +363,6 @@ function FlowStep({ number, text }: { number: string; text: string }) {
 const styles = StyleSheet.create({
   screenContent: { gap: spacing.lg },
   brand: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
-  brandMark: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   hero: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xxl },
   avatarRing: { borderWidth: 4, borderRadius: 36 },
   centerText: { textAlign: 'center' },

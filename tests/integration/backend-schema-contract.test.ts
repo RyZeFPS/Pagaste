@@ -14,6 +14,26 @@ const receiptFlowMigrationSql = readFileSync(
   join(migrationsDirectory, '20260722191620_simplify_claim_receipt_flow.sql'),
   'utf8',
 ).toLowerCase();
+const claimAmbiguityMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724080931_fix_create_claims_amount_ambiguity.sql'),
+  'utf8',
+).toLowerCase();
+const claimNotificationMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724083014_fix_public_claim_and_notifications.sql'),
+  'utf8',
+).toLowerCase();
+const notificationGrantMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724085148_restrict_app_notification_updates.sql'),
+  'utf8',
+).toLowerCase();
+const notificationCenterMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724091337_notification_center_and_payment_check.sql'),
+  'utf8',
+).toLowerCase();
+const receiptScanResultMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724141537_fix_receipt_scan_result_ordinality.sql'),
+  'utf8',
+).toLowerCase();
 
 const exposedTables = Array.from(
   migrationSql.matchAll(/create\s+table\s+public\.([a-z][a-z0-9_]*)/g),
@@ -57,6 +77,17 @@ describe('Supabase security contract', () => {
     expect(migrationSql).toContain('groups_avatar_path_shape');
   });
 
+  it('lets active members read the complete member list only for their groups', () => {
+    expect(migrationSql).toContain('group_members_select_group_members');
+    expect(migrationSql).toContain('using (private.is_group_member(group_id))');
+    expect(migrationSql).toMatch(
+      /private\.is_group_member\(p_group_id uuid\)[\s\S]*?\(select auth\.uid\(\)\) is not null/,
+    );
+    expect(migrationSql).toMatch(
+      /revoke all on function private\.is_group_member\(uuid\)[\s\S]*?from public, anon, authenticated/,
+    );
+  });
+
   it('keeps profile photos private, immutable and synchronized with social rows', () => {
     expect(migrationSql).toMatch(
       /values\s*\(\s*'profile-avatars'\s*,\s*'profile-avatars'\s*,\s*false\s*,\s*2097152/,
@@ -91,6 +122,76 @@ describe('Supabase security contract', () => {
     );
     expect(receiptFlowMigrationSql).toMatch(
       /grant execute on function public\.mark_claim_received\(uuid, uuid\)\s+to service_role/,
+    );
+  });
+
+  it('qualifies table-returning claim amounts to avoid PL/pgSQL ambiguity', () => {
+    expect(claimAmbiguityMigrationSql).toContain(
+      'coalesce((select sum(calculated.amount_cents) from calculated), 0)',
+    );
+    expect(claimAmbiguityMigrationSql).not.toContain(
+      'coalesce((select sum(amount_cents) from calculated), 0)',
+    );
+  });
+
+  it('keeps the public claim payload aligned with the client allow-list', () => {
+    for (const key of [
+      'creditorDisplayName',
+      'creditorAvatarUrl',
+      'creditorPhoneE164',
+      'expenseTitle',
+      'amountCents',
+    ]) {
+      expect(claimNotificationMigrationSql).toContain(`'${key.toLowerCase()}'`);
+    }
+    expect(claimNotificationMigrationSql).not.toContain("'payerdisplayname'");
+    expect(claimNotificationMigrationSql).not.toContain("'paymentphonee164'");
+  });
+
+  it('isolates durable claim notifications and publishes inserts in realtime', () => {
+    expect(claimNotificationMigrationSql).toContain('create table public.app_notifications');
+    expect(claimNotificationMigrationSql).toContain(
+      'alter table public.app_notifications enable row level security',
+    );
+    expect(claimNotificationMigrationSql).toContain('app_notifications_select_own');
+    expect(claimNotificationMigrationSql).toContain('app_notifications_update_own');
+    expect(claimNotificationMigrationSql).toContain('private.create_claim_requested_notification');
+    expect(claimNotificationMigrationSql).toContain(
+      'alter publication supabase_realtime add table public.app_notifications',
+    );
+    expect(notificationGrantMigrationSql).toContain(
+      'grant update (read_at) on table public.app_notifications to authenticated',
+    );
+    expect(notificationGrantMigrationSql).toContain(
+      'revoke update on table public.app_notifications from authenticated',
+    );
+  });
+
+  it('keeps payment-check requests notification-only and rate-limited', () => {
+    expect(notificationCenterMigrationSql).toContain("'payment_check_requested'");
+    expect(notificationCenterMigrationSql).toContain("interval '10 minutes'");
+    expect(notificationCenterMigrationSql).toContain("interval '24 hours'");
+    expect(notificationCenterMigrationSql).toContain("'claim_status_unchanged', true");
+    expect(notificationCenterMigrationSql).toContain(
+      'grant execute on function public.request_claim_payment_check(uuid, uuid)',
+    );
+    expect(notificationCenterMigrationSql).toContain('to service_role');
+    expect(notificationCenterMigrationSql).not.toMatch(
+      /update\s+public\.claims[\s\S]*?set\s+status/u,
+    );
+  });
+
+  it('persists ordered OCR products through a service-only invoker RPC', () => {
+    expect(receiptScanResultMigrationSql).toContain(
+      "from jsonb_array_elements(v_items) with ordinality as item(value, ordinality)",
+    );
+    expect(receiptScanResultMigrationSql).not.toContain('jsonb_to_recordset');
+    expect(receiptScanResultMigrationSql).toContain('security invoker');
+    expect(receiptScanResultMigrationSql).toMatch(
+      /revoke execute on function public\.apply_receipt_scan_result\(uuid, uuid, jsonb\)[\s\S]*?from public, anon, authenticated/,
+    );
+    expect(receiptScanResultMigrationSql).toMatch(
+      /grant execute on function public\.apply_receipt_scan_result\(uuid, uuid, jsonb\)[\s\S]*?to service_role/,
     );
   });
 

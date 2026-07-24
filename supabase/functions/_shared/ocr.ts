@@ -108,10 +108,18 @@ class HttpReceiptOcrProvider implements ReceiptOcrProvider {
         responseFormat: 'json',
         schema: 'pagaste.receipt.v1',
       }),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(55_000),
     });
-    if (!response.ok)
-      throw new ApiError('OCR_PROVIDER_ERROR', 'El proveedor OCR no respondió correctamente.', 502);
+    if (!response.ok) {
+      if (response.status === 422) {
+        throw new ApiError(
+          'OCR_NOT_READABLE',
+          'No se ha podido distinguir el total o los productos. Prueba con más luz y el ticket completo.',
+          422,
+        );
+      }
+      throw new ApiError('OCR_PROVIDER_ERROR', 'El lector de tickets no respondió correctamente.', 502);
+    }
     return receiptScanResultSchema.parse(await response.json());
   }
 }

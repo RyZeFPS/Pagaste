@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { MailCheck, ReceiptText, ShieldCheck } from 'lucide-react-native';
+import { MailCheck, ShieldCheck } from 'lucide-react-native';
 import { AppButton, AppText, Card, ScreenContainer } from '@/components/ui';
+import { BrandLogo } from '@/components/brand-logo';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
 import { getSafeInviteRedirect } from '@/lib/navigation';
@@ -36,17 +37,10 @@ export default function VerifyScreen() {
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
       <View style={styles.content}>
         <View style={styles.brand} accessibilityRole="header">
-          <View style={[styles.brandMark, { backgroundColor: palette.primary }]}>
-            <ReceiptText color={palette.white} size={22} strokeWidth={2.2} />
-          </View>
-          <View>
-            <AppText variant="screenTitle" color={palette.primary}>
-              Pagaste
-            </AppText>
-            <AppText variant="caption" color={palette.textSecondary}>
-              Escanea, reparte y cobra.
-            </AppText>
-          </View>
+          <BrandLogo variant="horizontal" width={200} testID="pagaste-brand-logo" />
+          <AppText variant="caption" color={palette.textSecondary}>
+            Escanea, reparte y cobra.
+          </AppText>
         </View>
 
         <View
@@ -110,15 +104,7 @@ const styles = StyleSheet.create({
   content: { width: '100%', gap: spacing.xl },
   flex: { flex: 1 },
   center: { textAlign: 'center' },
-  brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  brandMark: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    transform: [{ rotate: '-3deg' }],
-  },
+  brand: { alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   illustration: {
     height: 154,
     borderRadius: radii.card,

@@ -76,19 +76,11 @@ test('login, manual expense, external payment and receiver records it as receive
   await page.getByTestId('expense-total').fill('40,00');
   await page.getByRole('button', { name: 'Guardar borrador' }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/expense/${e2eIds.expense}/items`));
-  await page.getByTestId('item-name').fill('Cena');
-  await page.getByTestId('item-amount').fill('40,00');
-  await page.getByTestId('add-item').click();
-  await expect(page.getByText('Los productos cuadran con el total.')).toBeVisible();
-  await page.getByRole('button', { name: 'Elegir participantes' }).click();
-
+  await expect(page).toHaveURL(new RegExp(`/expense/${e2eIds.expense}/participants`));
   await page.getByTestId('participant-name').fill('Ferran');
   await page.getByTestId('add-participant').click();
   await expect(page.getByText('Repartir productos', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cambiar reparto' }).click();
-  await expect(page.getByText('Repartir Cena')).toBeVisible();
-  await page.getByRole('button', { name: 'Aplicar reparto' }).click();
+  await expect(page.getByText('Reparto igual preparado')).toBeVisible();
   await expect(page.getByTestId('review-expense')).toBeEnabled();
   expect(backend.allocations).toHaveLength(2);
   expect(
@@ -142,7 +134,7 @@ test('login, manual expense, external payment and receiver records it as receive
   expect(backend.unhandledRequests).toEqual([]);
 });
 
-test('suggested equal split respects the allocation database contract', async ({ page }) => {
+test('manual products are added from the split screen and stay balanced', async ({ page }) => {
   const backend = createMockSupabase();
   await installMockSupabase(page, backend);
 
@@ -151,21 +143,23 @@ test('suggested equal split respects the allocation database contract', async ({
   await page.getByTestId('expense-title').fill('Comida de equipo');
   await page.getByTestId('expense-total').fill('12,00');
   await page.getByRole('button', { name: 'Guardar borrador' }).click();
-  await page.getByTestId('item-name').fill('Pizza');
-  await page.getByTestId('item-amount').fill('12,00');
-  await page.getByTestId('add-item').click();
-  await page.getByRole('button', { name: 'Elegir participantes' }).click();
   await page.getByTestId('participant-name').fill('Ferran');
   await page.getByTestId('add-participant').click();
 
-  await page.getByRole('button', { name: 'Sugerir' }).click();
+  await page.getByRole('button', { name: 'Añadir producto' }).click();
+  await page.getByTestId('split-item-name').fill('Pizza');
+  await page.getByTestId('split-item-amount').fill('7,00');
+  await page.getByTestId('split-add-item').click();
 
-  await expect(
-    page.getByText('Hemos repartido por igual los productos que faltaban.'),
-  ).toBeVisible();
-  expect(backend.allocations).toHaveLength(2);
+  await expect(page.getByText('Pizza', { exact: true })).toBeVisible();
+  await expect(page.getByText(/5[,.]00 sin productos/u)).toBeVisible();
+  expect(backend.items.map(({ line_total_cents }) => line_total_cents).sort()).toEqual([500, 700]);
+  expect(backend.allocations).toHaveLength(4);
   expect(
     backend.allocations.every(({ method, shares }) => method === 'equal' && shares === null),
   ).toBe(true);
+  expect(
+    backend.allocations.reduce((total, allocation) => total + allocation.amount_cents, 0),
+  ).toBe(1_200);
   expect(backend.unhandledRequests).toEqual([]);
 });

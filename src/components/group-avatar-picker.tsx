@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Camera, Trash2 } from 'lucide-react-native';
-import { AppText, Avatar } from '@/components/ui';
+import { AppButton, AppText, Avatar, BottomSheet } from '@/components/ui';
 import { useAppColors } from '@/providers/app-providers';
-import { radii, spacing, touchTarget } from '@/theme';
+import { radii, spacing } from '@/theme';
 
 export function GroupAvatarPicker({
   name,
@@ -20,65 +21,78 @@ export function GroupAvatarPicker({
   onRemove?: () => void;
 }) {
   const palette = useAppColors();
-  const changeLabel = uri ? 'Cambiar foto del grupo' : 'Añadir foto del grupo';
+  const [menuVisible, setMenuVisible] = useState(false);
+  const changeLabel = uri ? 'Editar foto del grupo' : 'Añadir foto del grupo';
+
+  const pickPhoto = () => {
+    setMenuVisible(false);
+    onPick();
+  };
+
+  const removePhoto = () => {
+    setMenuVisible(false);
+    onRemove?.();
+  };
 
   return (
-    <View style={styles.picker}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={changeLabel}
-        accessibilityState={{ busy, disabled: busy }}
-        disabled={busy}
-        onPress={onPick}
-        style={({ pressed }) => [
-          styles.avatarButton,
-          { width: size, height: size, opacity: pressed || busy ? 0.72 : 1 },
-        ]}
-      >
-        <Avatar name={name} uri={uri} size={size} />
-        <View
-          pointerEvents="none"
-          style={[
-            styles.cameraBadge,
-            { backgroundColor: palette.primary, borderColor: palette.surface },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={palette.white} size="small" />
-          ) : (
-            <Camera color={palette.white} size={16} strokeWidth={2.2} />
-          )}
-        </View>
-      </Pressable>
-
-      <View style={styles.actions}>
+    <>
+      <View style={styles.picker}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={changeLabel}
+          accessibilityHint="Abre las opciones de la foto del grupo"
+          accessibilityState={{ busy, disabled: busy }}
           disabled={busy}
-          onPress={onPick}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          onPress={() => setMenuVisible(true)}
+          style={({ pressed }) => [
+            styles.avatarButton,
+            { width: size, height: size, opacity: pressed || busy ? 0.72 : 1 },
+          ]}
         >
-          <AppText variant="caption" color={palette.primary}>
-            {uri ? 'Cambiar' : 'Añadir foto'}
-          </AppText>
-        </Pressable>
-        {uri && onRemove ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Quitar foto del grupo"
-            disabled={busy}
-            onPress={onRemove}
-            style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          <Avatar name={name} uri={uri} size={size} />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.cameraBadge,
+              { backgroundColor: palette.primary, borderColor: palette.surface },
+            ]}
           >
-            <Trash2 color={palette.dangerInk} size={14} strokeWidth={2} />
-            <AppText variant="caption" color={palette.dangerInk}>
-              Quitar
-            </AppText>
-          </Pressable>
-        ) : null}
+            {busy ? (
+              <ActivityIndicator color={palette.white} size="small" />
+            ) : (
+              <Camera color={palette.white} size={16} strokeWidth={2.2} />
+            )}
+          </View>
+        </Pressable>
       </View>
-    </View>
+
+      <BottomSheet
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        title="Foto del grupo"
+      >
+        <View style={styles.sheetActions}>
+          <AppText variant="bodySmall" color={palette.textSecondary}>
+            Elige una foto que ayude a reconocer el grupo.
+          </AppText>
+          <AppButton
+            title={uri ? 'Cambiar foto' : 'Añadir foto'}
+            fullWidth
+            leftIcon={<Camera color={palette.white} size={19} strokeWidth={2} />}
+            onPress={pickPhoto}
+          />
+          {uri && onRemove ? (
+            <AppButton
+              title="Quitar foto"
+              variant="danger"
+              fullWidth
+              leftIcon={<Trash2 color={palette.white} size={18} strokeWidth={2} />}
+              onPress={removePhoto}
+            />
+          ) : null}
+        </View>
+      </BottomSheet>
+    </>
   );
 }
 
@@ -102,22 +116,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actions: {
-    minHeight: touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  action: {
-    minHeight: touchTarget,
-    paddingHorizontal: spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  pressed: {
-    opacity: 0.62,
+  sheetActions: {
+    gap: spacing.lg,
   },
 });

@@ -1,12 +1,13 @@
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, type PropsWithChildren } from 'react';
-import { AppState, Platform } from 'react-native';
+import { useEffect, type PropsWithChildren } from 'react';
+import { AppState, Platform, View } from 'react-native';
 import { I18nProvider } from '@/i18n';
 import { AuthProvider, useAuth } from '@/providers/auth-provider';
 import { useFinanceLiveRefresh } from '@/hooks/use-home-live-refresh';
-import { colors, type AppColors } from '@/theme';
+import { NotificationCenterProvider } from '@/providers/notification-center-provider';
+import { ThemeContext } from '@/providers/theme-context';
+import { colors } from '@/theme';
 
-const ThemeContext = createContext<AppColors>(colors.light);
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -39,7 +40,11 @@ function NativeQueryFocusBridge() {
 function FinanceRealtimeBridge({ children }: PropsWithChildren) {
   const auth = useAuth();
   useFinanceLiveRefresh(auth.user?.id);
-  return children;
+  return (
+    <NotificationCenterProvider userId={auth.user?.id} palette={colors.light}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </NotificationCenterProvider>
+  );
 }
 
 export function AppProviders({ children }: PropsWithChildren) {
@@ -57,4 +62,4 @@ export function AppProviders({ children }: PropsWithChildren) {
   );
 }
 
-export const useAppColors = () => useContext(ThemeContext);
+export { useAppColors } from '@/providers/theme-context';

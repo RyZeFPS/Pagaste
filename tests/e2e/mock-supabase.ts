@@ -8,6 +8,7 @@ const ids = {
   payer: '33333333-3333-4333-8333-333333333333',
   guest: '44444444-4444-4444-8444-444444444444',
   item: '55555555-5555-4555-8555-555555555555',
+  item2: '55555555-5555-4555-8555-555555555556',
   payerAllocation: '66666666-6666-4666-8666-666666666666',
   guestAllocation: '77777777-7777-4777-8777-777777777777',
   claim: '88888888-8888-4888-8888-888888888888',
@@ -455,13 +456,13 @@ async function handleRest(route: Route, state: MockSupabase): Promise<void> {
     if (method === 'POST') {
       const body = requestBody(route);
       const item: Item = {
-        id: ids.item,
+        id: state.items.length === 0 ? ids.item : ids.item2,
         expense_id: String(body.expense_id),
         name: String(body.name),
         quantity: Number(body.quantity ?? 1),
         unit_price_cents: body.unit_price_cents == null ? null : Number(body.unit_price_cents),
         line_total_cents: Number(body.line_total_cents),
-        category: null,
+        category: body.category == null ? null : String(body.category),
         sort_order: Number(body.sort_order ?? state.items.length),
         ocr_confidence: null,
         source: String(body.source ?? 'manual'),
@@ -471,12 +472,15 @@ async function handleRest(route: Route, state: MockSupabase): Promise<void> {
     }
     if (method === 'GET') return json(route, state.items);
     if (method === 'PATCH') {
-      state.items[0] = { ...state.items[0], ...requestBody(route) };
-      return json(route, state.items[0]);
+      const selectedId = url.searchParams.get('id')?.replace('eq.', '');
+      const index = state.items.findIndex(({ id }) => id === selectedId);
+      state.items[index] = { ...state.items[index], ...requestBody(route) };
+      return json(route, state.items[index]);
     }
     if (method === 'DELETE') {
-      state.items = [];
-      state.allocations = [];
+      const selectedId = url.searchParams.get('id')?.replace('eq.', '');
+      state.items = state.items.filter(({ id }) => id !== selectedId);
+      state.allocations = state.allocations.filter(({ item_id }) => item_id !== selectedId);
       return route.fulfill({ status: 204, headers: corsHeaders(route), body: '' });
     }
   }
@@ -538,6 +542,14 @@ async function handleRest(route: Route, state: MockSupabase): Promise<void> {
       route,
       state.claims.map((claim) => withDebtor(claim, state.participants, state.expense)),
     );
+  }
+
+  if (table === 'app_notifications' && (method === 'GET' || method === 'HEAD')) {
+    return route.fulfill({
+      status: 200,
+      headers: { ...corsHeaders(route), 'content-range': '*/0' },
+      body: method === 'HEAD' ? '' : '[]',
+    });
   }
 
   if (table === 'groups' && method === 'GET') return json(route, []);

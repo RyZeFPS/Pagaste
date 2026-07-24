@@ -6,6 +6,7 @@ import { AppButton, AppText, Card, ScreenContainer } from '@/components/ui';
 import { getSafeInviteRedirect } from '@/lib/navigation';
 import { getSupabase } from '@/lib/supabase/client';
 import { useAppColors } from '@/providers/app-providers';
+import { useAuth } from '@/providers/auth-provider';
 import { spacing } from '@/theme';
 
 type ConfirmationType = 'email' | 'recovery';
@@ -15,6 +16,8 @@ function first(value: string | string[] | undefined): string | undefined {
 }
 
 export default function ConfirmAuthEmailScreen() {
+  const auth = useAuth();
+  const { completePasswordRecovery } = auth;
   const palette = useAppColors();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -36,6 +39,12 @@ export default function ConfirmAuthEmailScreen() {
 
     void (async () => {
       try {
+        if (type === 'recovery') {
+          await completePasswordRecovery({ tokenHash });
+          if (active) router.replace('/(auth)/reset-password');
+          return;
+        }
+
         const { data, error: authError } = await getSupabase().auth.verifyOtp({
           token_hash: tokenHash,
           type,
@@ -43,11 +52,6 @@ export default function ConfirmAuthEmailScreen() {
         if (!active) return;
         if (authError || !data.session) {
           setVerificationError('El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo.');
-          return;
-        }
-
-        if (type === 'recovery') {
-          router.replace('/(auth)/reset-password');
           return;
         }
 
@@ -65,7 +69,7 @@ export default function ConfirmAuthEmailScreen() {
     return () => {
       active = false;
     };
-  }, [router, tokenHash, type]);
+  }, [completePasswordRecovery, router, tokenHash, type]);
 
   return (
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>

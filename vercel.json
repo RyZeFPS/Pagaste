@@ -4,6 +4,20 @@
   "buildCommand": "pnpm build:web:release",
   "outputDirectory": "dist",
   "framework": null,
+  "functions": {
+    "api/ocr.ts": {
+      "maxDuration": 60,
+      "supportsCancellation": true,
+      "includeFiles": "server/ocr/data/**"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/auth/expo",
+      "destination": "/login",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {

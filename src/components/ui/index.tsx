@@ -26,7 +26,7 @@ import { Image } from 'expo-image';
 import { usePathname } from 'expo-router';
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppColors } from '@/providers/app-providers';
+import { useAppColors } from '@/providers/theme-context';
 import { layout, radii, shadows, spacing, touchTarget, typography } from '@/theme';
 import { formatCentsExact } from '@/lib/money-format';
 import { useProfileAvatarUrl } from '@/lib/profile-avatar-url';
@@ -946,26 +946,6 @@ export function ListCard({ style, ...props }: ViewProps) {
   return <Card {...props} variant="grouped" padding="none" style={[styles.listCard, style]} />;
 }
 
-export function StickyFooter({ style, ...props }: ViewProps) {
-  const palette = useAppColors();
-  const insets = useSafeAreaInsets();
-  return (
-    <View
-      {...props}
-      style={[
-        styles.stickyFooter,
-        shadows.tabBar,
-        {
-          backgroundColor: palette.surface,
-          borderTopColor: palette.divider,
-          paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm),
-        },
-        style,
-      ]}
-    />
-  );
-}
-
 export function ResponsiveContainer({
   publicPage,
   style,
@@ -1008,6 +988,7 @@ export function ScreenContainer({
       ref={scrollRef}
       keyboardShouldPersistTaps="handled"
       {...props}
+      showsVerticalScrollIndicator={false}
       style={[styles.screenScroll, { backgroundColor: palette.background }, props.style]}
       contentContainerStyle={[
         styles.screen,
@@ -1163,15 +1144,6 @@ const styles = StyleSheet.create({
   },
   divider: { height: StyleSheet.hairlineWidth },
   listCard: { gap: 0 },
-  stickyFooter: {
-    width: '100%',
-    maxWidth: layout.mobileMaxWidth,
-    alignSelf: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: spacing.md,
-    paddingHorizontal: layout.screenGutter,
-    gap: spacing.md,
-  },
   responsive: { width: '100%', alignSelf: 'center', gap: spacing.lg },
   screenScroll: { flex: 1 },
   screen: {

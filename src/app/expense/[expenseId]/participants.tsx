@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { ChevronRight, Minus, Plus, Send, Trash2 } from 'lucide-react-native';
+import {
+  ChevronRight,
+  Minus,
+  Plus,
+  ReceiptText,
+  Send,
+  Sparkles,
+  Trash2,
+} from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,7 +24,6 @@ import {
   MoneyInput,
   ParticipantChip,
   ScreenContainer,
-  StickyFooter,
 } from '@/components/ui';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
 import { ScreenLoadingSkeleton } from '@/components/loading-skeletons';
@@ -27,6 +34,10 @@ import {
   splitEvenly,
   sumCents,
 } from '@/domain/money';
+import {
+  equalAllocationValues,
+  isManualRemainder,
+} from '@/domain/manual-expense';
 import { repository } from '@/lib/repository';
 import type { ExpenseItem, Participant } from '@/lib/models';
 import { useAppColors } from '@/providers/app-providers';
@@ -70,6 +81,11 @@ function ParticipantsContent() {
   const [allocationError, setAllocationError] = useState<string>();
   const [feedback, setFeedback] = useState<string>();
   const [addingParticipant, setAddingParticipant] = useState(false);
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [productName, setProductName] = useState('');
+  const [productAmount, setProductAmount] = useState(0);
+  const [productQuantity, setProductQuantity] = useState('1');
+  const [productError, setProductError] = useState<string>();
   const [editingItem, setEditingItem] = useState<ExpenseItem>();
   const [mode, setMode] = useState<AllocationMode>('all');
   const [selected, setSelected] = useState<string[]>([]);
@@ -84,11 +100,25 @@ function ParticipantsContent() {
   const add = useMutation({
     mutationFn: async () => {
       if (name.trim().length < 2) throw new Error('Escribe un nombre válido.');
-      await repository.addParticipant(
+      const participant = await repository.addParticipant(
         expenseId,
         { displayName: name.trim() },
         detail?.participants.length ?? 0,
       );
+      const participantIds = [
+        ...(detail?.participants.map((person) => person.id) ?? []),
+        participant.id,
+      ];
+      for (const item of detail?.items ?? []) {
+        const current = detail?.allocations.filter(
+          (allocation) => allocation.item_id === item.id,
+        );
+        if (!current?.length || current.every((allocation) => allocation.method === 'equal'))
+          await repository.replaceAllocations(
+            item.id,
+            equalAllocationValues(item.line_total_cents, participantIds),
+          );
+      }
     },
     onSuccess: async () => {
       setName('');
@@ -118,6 +148,104 @@ function ParticipantsContent() {
       );
     return totals;
   }, [detail?.allocations]);
+  const addProduct = useMutation({
+    mutationFn: async () => {
+      if (!detail) throw new Error('No hemos podido cargar el gasto.');
+      const parsedQuantity = Number(productQuantity.replace(',', '.'));
+      if (
+        productName.trim().length < 2 ||
+        productAmount <= 0 ||
+        !/^\d{1,4}(?:[.,]\d{1,3})?$/u.test(productQuantity) ||
+        !Number.isFinite(parsedQuantity) ||
+        parsedQuantity <= 0
+      )
+        throw new Error('Escribe un producto, una cantidad y un importe válidos.');
+
+      const remainder = detail.items.find((item) => isManualRemainder(item.category));
+      const detailedTotal = sumCents(
+        detail.items
+          .filter((item) => !isManualRemainder(item.category))
+          .map((item) => item.line_total_cents),
+      );
+      const available = remainder?.line_total_cents ?? detail.total_cents - detailedTotal;
+      if (productAmount > available)
+        throw new Error(
+          `Solo quedan ${formatMoney(Math.max(0, available), detail.currency)} sin detallar.`,
+        );
+
+      const product = await repository.addItem(
+        expenseId,
+        {
+          name: productName.trim(),
+          lineTotalCents: productAmount,
+          quantity: parsedQuantity,
+          source: 'manual',
+        },
+        detail.items.length,
+      );
+      let remainderUpdated = false;
+      try {
+        await repository.replaceAllocations(
+          product.id,
+          equalAllocationValues(
+            product.line_total_cents,
+            detail.participants.map((participant) => participant.id),
+          ),
+        );
+        if (remainder) {
+          const remaining = remainder.line_total_cents - productAmount;
+          if (remaining === 0) {
+            await repository.deleteItem(remainder.id);
+          } else {
+            await repository.updateItem(remainder.id, {
+              line_total_cents: remaining,
+              unit_price_cents: remaining,
+            });
+            remainderUpdated = true;
+            await repository.replaceAllocations(
+              remainder.id,
+              equalAllocationValues(
+                remaining,
+                detail.participants.map((participant) => participant.id),
+              ),
+            );
+          }
+        }
+      } catch (cause) {
+        await repository.deleteItem(product.id).catch(() => undefined);
+        if (remainder && remainderUpdated) {
+          await repository
+            .updateItem(remainder.id, {
+              line_total_cents: remainder.line_total_cents,
+              unit_price_cents: remainder.line_total_cents,
+            })
+            .catch(() => undefined);
+          await repository
+            .replaceAllocations(
+              remainder.id,
+              equalAllocationValues(
+                remainder.line_total_cents,
+                detail.participants.map((participant) => participant.id),
+              ),
+            )
+            .catch(() => undefined);
+        }
+        throw cause;
+      }
+    },
+    onSuccess: async () => {
+      setProductName('');
+      setProductAmount(0);
+      setProductQuantity('1');
+      setProductError(undefined);
+      setAddingProduct(false);
+      await refresh();
+    },
+    onError: (cause) =>
+      setProductError(
+        cause instanceof Error ? cause.message : 'No se ha podido añadir el producto.',
+      ),
+  });
 
   const openAllocation = (item: ExpenseItem, participants: Participant[]) => {
     const existing = allocationsByItem.get(item.id) ?? [];
@@ -269,37 +397,19 @@ function ParticipantsContent() {
       setAddingParticipant(true);
       return;
     }
-    const incompleteItems = detail.items.filter(
-      (item) =>
-        sumCents(
-          (allocationsByItem.get(item.id) ?? []).map((allocation) => allocation.amount_cents),
-        ) !== item.line_total_cents,
-    );
-    if (!incompleteItems.length) {
-      setFeedback('El reparto ya está completo.');
-      return;
-    }
     setSuggesting(true);
     setFeedback(undefined);
     try {
-      for (const item of incompleteItems) {
-        const targets = splitEvenly(
-          item.line_total_cents,
-          detail.participants.map((participant) => participant.id),
-        );
+      for (const item of detail.items) {
         await repository.replaceAllocations(
           item.id,
-          targets.map((target) => ({
-            participant_id: target.memberId,
-            method: 'equal' as const,
-            shares: null,
-            percentage: null,
-            units: null,
-            amount_cents: target.amountCents,
-          })),
+          equalAllocationValues(
+            item.line_total_cents,
+            detail.participants.map((participant) => participant.id),
+          ),
         );
       }
-      setFeedback('Hemos repartido por igual los productos que faltaban.');
+      setFeedback('Todo el gasto vuelve a estar repartido a partes iguales.');
       await refresh();
     } catch {
       setFeedback('No hemos podido sugerir el reparto.');
@@ -320,6 +430,29 @@ function ParticipantsContent() {
   const totalToCollect = sumCents(
     debtors.map((participant) => totalsByParticipant.get(participant.id) ?? 0),
   );
+  const manualRemainder = detail.items.find((item) => isManualRemainder(item.category));
+  const detailedTotal = sumCents(
+    detail.items
+      .filter((item) => !isManualRemainder(item.category))
+      .map((item) => item.line_total_cents),
+  );
+  const availableToDetail = manualRemainder?.line_total_cents ?? detail.total_cents - detailedTotal;
+  const removeParticipant = async (participant: Participant) => {
+    const remainingIds = detail.participants
+      .filter((person) => person.id !== participant.id)
+      .map((person) => person.id);
+    const equalItems = detail.items.filter((item) => {
+      const allocations = allocationsByItem.get(item.id) ?? [];
+      return !allocations.length || allocations.every((allocation) => allocation.method === 'equal');
+    });
+    await repository.deleteParticipant(participant.id);
+    for (const item of equalItems)
+      await repository.replaceAllocations(
+        item.id,
+        equalAllocationValues(item.line_total_cents, remainingIds),
+      );
+    await refresh();
+  };
 
   return (
     <View style={[styles.page, { backgroundColor: palette.background }]}>
@@ -328,7 +461,8 @@ function ParticipantsContent() {
           title="Repartir productos"
           action={
             <AppButton
-              title="Sugerir"
+              title="Igualar"
+              accessibilityLabel="Repartir todo a partes iguales"
               variant="ghost"
               size="sm"
               loading={suggesting}
@@ -384,6 +518,20 @@ function ParticipantsContent() {
           </Pressable>
         </ScrollView>
 
+        {detail.participants.length >= 2 ? (
+          <Card variant="flat" style={[styles.equalBanner, { backgroundColor: palette.primaryLight }]}>
+            <View style={[styles.equalBannerIcon, { backgroundColor: palette.surface }]}>
+              <Sparkles color={palette.primary} size={19} />
+            </View>
+            <View style={styles.flex}>
+              <AppText variant="label">Reparto igual preparado</AppText>
+              <AppText variant="bodySmall" color={palette.textSecondary}>
+                Cada producto empieza dividido entre todos. Tócalo para cambiar quién paga.
+              </AppText>
+            </View>
+          </Card>
+        ) : null}
+
         {feedback ? (
           <Card variant="flat" style={{ backgroundColor: palette.primaryLight }}>
             <AppText variant="bodySmall" color={palette.primary}>
@@ -400,9 +548,32 @@ function ParticipantsContent() {
           />
         ) : (
           <>
+            <View style={styles.productsHeading}>
+              <View style={styles.flex}>
+                <AppText variant="sectionTitle">Detalle del gasto</AppText>
+                <AppText variant="bodySmall" color={palette.textSecondary}>
+                  {availableToDetail > 0
+                    ? `${formatMoney(availableToDetail, detail.currency)} todavía sin detallar`
+                    : 'Todo el gasto está detallado'}
+                </AppText>
+              </View>
+              {availableToDetail > 0 ? (
+                <AppButton
+                  title="Añadir producto"
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Plus color={palette.primary} size={17} />}
+                  onPress={() => {
+                    setProductError(undefined);
+                    setAddingProduct(true);
+                  }}
+                />
+              ) : null}
+            </View>
             <Card variant="grouped" padding="none">
               {detail.items.map((item, index) => {
                 const itemAllocations = allocationsByItem.get(item.id) ?? [];
+                const isRemainder = isManualRemainder(item.category);
                 const itemAsset = productThreeDAsset(item);
                 const allocationLabel =
                   itemAllocations.length === 0
@@ -416,7 +587,7 @@ function ParticipantsContent() {
                   <Pressable
                     key={item.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`${item.name}: ${allocationLabel}. Cambiar reparto`}
+                    accessibilityLabel={`${isRemainder ? 'Resto sin detallar' : item.name}: ${allocationLabel}. Cambiar reparto`}
                     onPress={() => openAllocation(item, detail.participants)}
                     style={({ pressed }) => [
                       styles.productRow,
@@ -433,16 +604,22 @@ function ParticipantsContent() {
                         },
                       ]}
                     >
-                      {itemAsset ? (
+                      {isRemainder ? (
+                        <ReceiptText color={palette.primary} size={23} />
+                      ) : itemAsset ? (
                         <ThreeDIcon name={itemAsset} size={40} />
                       ) : (
                         <Minus color={palette.warningInk} size={20} strokeWidth={2.2} />
                       )}
                     </View>
                     <View style={styles.productCopy}>
-                      <AppText variant="label">{item.name}</AppText>
+                      <AppText variant="label">
+                        {isRemainder ? 'Reparto general' : item.name}
+                      </AppText>
                       <AppText variant="bodySmall" color={palette.textSecondary}>
-                        {formatMoney(item.line_total_cents, detail.currency)}
+                        {isRemainder
+                          ? `${formatMoney(item.line_total_cents, detail.currency)} sin productos`
+                          : formatMoney(item.line_total_cents, detail.currency)}
                       </AppText>
                       {!itemAllocations.length ? (
                         <AppText variant="caption" color={palette.danger}>
@@ -551,8 +728,6 @@ function ParticipantsContent() {
             </View>
           </Card>
         ) : null}
-      </ScreenContainer>
-      <StickyFooter>
         <AppButton
           testID="review-expense"
           title="Enviar cobros"
@@ -563,7 +738,58 @@ function ParticipantsContent() {
           disabled={detail.participants.length < 2 || !allocationsValid || totalToCollect <= 0}
           onPress={() => router.push(`/expense/${expenseId}/review`)}
         />
-      </StickyFooter>
+      </ScreenContainer>
+      <BottomSheet
+        visible={addingProduct}
+        onClose={() => {
+          setAddingProduct(false);
+          setProductError(undefined);
+        }}
+        title="Añadir producto"
+      >
+        <View style={[styles.productBudget, { backgroundColor: palette.primaryLight }]}>
+          <AppText variant="bodySmall" color={palette.textSecondary}>
+            Importe disponible
+          </AppText>
+          <AppText variant="metric" color={palette.primary}>
+            {formatMoney(Math.max(0, availableToDetail), detail.currency)}
+          </AppText>
+        </View>
+        <AppInput
+          testID="split-item-name"
+          label="Producto"
+          placeholder="Pizza"
+          value={productName}
+          onChangeText={setProductName}
+        />
+        <AppInput
+          label="Cantidad"
+          keyboardType="decimal-pad"
+          value={productQuantity}
+          onChangeText={(value) =>
+            setProductQuantity(value.replace(/[^\d.,]/gu, '').slice(0, 8))
+          }
+          hint="Unidades o cantidad con hasta tres decimales"
+        />
+        <MoneyInput
+          testID="split-item-amount"
+          label="Importe total"
+          valueCents={productAmount}
+          onChangeCents={setProductAmount}
+          currency={detail.currency}
+        />
+        <AppText variant="caption" color={palette.textSecondary}>
+          Lo repartiremos por igual. Después puedes tocar el producto para cambiar la asignación.
+        </AppText>
+        {productError ? <AppText color={palette.danger}>{productError}</AppText> : null}
+        <AppButton
+          testID="split-add-item"
+          title="Añadir y repartir"
+          loading={addProduct.isPending}
+          leftIcon={<Plus color={palette.white} size={19} />}
+          onPress={() => addProduct.mutate()}
+        />
+      </BottomSheet>
       <BottomSheet
         visible={addingParticipant || detail.participants.length < 2}
         onClose={() => setAddingParticipant(false)}
@@ -600,10 +826,9 @@ function ParticipantsContent() {
                   <IconButton
                     label={`Eliminar ${participant.display_name}`}
                     icon={<Trash2 size={17} color={palette.danger} />}
-                    variant="plain"
-                    onPress={async () => {
-                      await repository.deleteParticipant(participant.id);
-                      await refresh();
+                  variant="plain"
+                  onPress={async () => {
+                      await removeParticipant(participant);
                     }}
                   />
                 </View>
@@ -746,6 +971,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   personName: { width: 64, textAlign: 'center' },
+  equalBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  equalBannerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productsHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   productRow: {
     minHeight: 56,
     paddingHorizontal: spacing.lg,
@@ -799,6 +1041,16 @@ const styles = StyleSheet.create({
   summaryTotal: {
     borderTopWidth: 1,
     paddingTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  productBudget: {
+    minHeight: 68,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

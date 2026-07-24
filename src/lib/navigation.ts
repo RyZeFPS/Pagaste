@@ -1,6 +1,12 @@
 export type InviteRedirect = `/invite/${string}`;
+export type PublicClaimRedirect = `/c/${string}`;
 export type NotificationRedirect =
-  InviteRedirect | `/expense/${string}/status` | `/group/${string}`;
+  | InviteRedirect
+  | PublicClaimRedirect
+  | '/activity'
+  | '/settings/notifications'
+  | `/expense/${string}/status`
+  | `/group/${string}`;
 
 const INVITE_PREFIX = '/invite/';
 const INVITE_TOKEN_LENGTH = 43;
@@ -25,11 +31,15 @@ const UUID =
   '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}';
 const EXPENSE_STATUS_ROUTE = new RegExp(`^/expense/${UUID}/status$`, 'u');
 const GROUP_ROUTE = new RegExp(`^/group/${UUID}$`, 'u');
+const PUBLIC_CLAIM_ROUTE = /^\/c\/([A-Za-z0-9_-]{43})$/u;
 
 export function getSafeNotificationRedirect(value: unknown): NotificationRedirect | undefined {
   const invite = getSafeInviteRedirect(value);
   if (invite) return invite;
   if (typeof value !== 'string') return undefined;
+  if (value === '/activity') return value;
+  if (value === '/settings/notifications') return value;
+  if (PUBLIC_CLAIM_ROUTE.test(value)) return value as PublicClaimRedirect;
   if (!EXPENSE_STATUS_ROUTE.test(value) && !GROUP_ROUTE.test(value)) return undefined;
   return value as NotificationRedirect;
 }

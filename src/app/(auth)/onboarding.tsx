@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, TextInput, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Check, LockKeyhole, ReceiptText, UserRound } from 'lucide-react-native';
+import { ArrowLeft, Check, LockKeyhole, UserRound } from 'lucide-react-native';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
+import { BrandLogo } from '@/components/brand-logo';
 import { ThreeDIcon, type ThreeDAsset } from '@/components/three-d-icon';
 import { AuthScreenSkeleton } from '@/components/loading-skeletons';
 import { useAuth } from '@/providers/auth-provider';
@@ -131,17 +132,10 @@ export default function OnboardingScreen() {
       <View style={styles.content}>
         <View style={styles.topBar}>
           <View style={styles.brand} accessibilityRole="header">
-            <View style={[styles.brandMark, { backgroundColor: palette.primary }]}>
-              <ReceiptText color={palette.white} size={22} strokeWidth={2.2} />
-            </View>
-            <View>
-              <AppText variant="screenTitle" color={palette.primary}>
-                Pagaste
-              </AppText>
-              <AppText variant="caption" color={palette.textSecondary}>
-                Tu primera vuelta, en un minuto.
-              </AppText>
-            </View>
+            <BrandLogo variant="horizontal" width={154} testID="pagaste-brand-logo" />
+            <AppText variant="caption" color={palette.textSecondary}>
+              Tu primera vuelta, en un minuto.
+            </AppText>
           </View>
           {step > 0 ? (
             <AppButton
@@ -355,15 +349,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  brandMark: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    transform: [{ rotate: '-3deg' }],
-  },
+  brand: { alignItems: 'flex-start', gap: spacing.xxs },
   progress: { flexDirection: 'row', gap: spacing.sm },
   progressSegment: { flex: 1, height: 5, borderRadius: radii.pill },
   animatedContent: { gap: spacing.lg },

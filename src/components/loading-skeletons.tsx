@@ -1,12 +1,5 @@
 import { StyleSheet, View, type ViewStyle } from 'react-native';
-import {
-  AppText,
-  Card,
-  LoadingSkeleton,
-  ResponsiveContainer,
-  ScreenContainer,
-  StickyFooter,
-} from '@/components/ui';
+import { AppText, Card, LoadingSkeleton, ScreenContainer } from '@/components/ui';
 import { useAppColors } from '@/providers/app-providers';
 import { layout, radii, shadows, spacing } from '@/theme';
 
@@ -388,14 +381,8 @@ export function ScreenLoadingSkeleton({ variant }: { variant: ScreenLoadingVaria
           {variant === 'publicClaim' ? null : <SkeletonHeader />}
           <VariantShapes variant={variant} />
         </LoadingRegion>
+        {footer ? <LoadingSkeleton height={56} borderRadius={radii.control} /> : null}
       </ScreenContainer>
-      {footer ? (
-        <StickyFooter>
-          <ResponsiveContainer>
-            <LoadingSkeleton height={56} borderRadius={radii.control} />
-          </ResponsiveContainer>
-        </StickyFooter>
-      ) : null}
     </View>
   );
 }

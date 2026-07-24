@@ -15,7 +15,6 @@ import {
   LoadingSkeleton,
   MoneyInput,
   ScreenContainer,
-  StickyFooter,
 } from '@/components/ui';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
 import { ScreenLoadingSkeleton } from '@/components/loading-skeletons';
@@ -426,8 +425,6 @@ function ItemsContent() {
             ) : null}
           </Card>
         ) : null}
-      </ScreenContainer>
-      <StickyFooter>
         <AppButton
           title="Continuar"
           accessibilityLabel="Elegir participantes"
@@ -443,7 +440,7 @@ function ItemsContent() {
             router.push(`/expense/${expenseId}/participants`);
           }}
         />
-      </StickyFooter>
+      </ScreenContainer>
     </View>
   );
 }

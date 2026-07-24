@@ -3,6 +3,8 @@ import type { ExpenseTotalsInput } from '../../src/types';
 import {
   calculateMemberTotals,
   calculateRecoverableAmount,
+  equalAllocationValues,
+  isManualRemainder,
   memberTotalsToRecord,
   validateExpenseTotals,
 } from '../../src/domain';
@@ -43,6 +45,17 @@ function validExpense(overrides: Partial<ExpenseTotalsInput> = {}): ExpenseTotal
 }
 
 describe('expense totals', () => {
+  it('prepares an exact equal split for a manual expense and omits zero rows', () => {
+    expect(equalAllocationValues(1_000, ['payer', 'ferran', 'marta'])).toEqual([
+      expect.objectContaining({ participant_id: 'payer', amount_cents: 334, method: 'equal' }),
+      expect.objectContaining({ participant_id: 'ferran', amount_cents: 333, method: 'equal' }),
+      expect.objectContaining({ participant_id: 'marta', amount_cents: 333, method: 'equal' }),
+    ]);
+    expect(equalAllocationValues(1, ['payer', 'ferran'])).toHaveLength(1);
+    expect(isManualRemainder('manual_remainder')).toBe(true);
+    expect(isManualRemainder(null)).toBe(false);
+  });
+
   it("validates lines, adjustments, claims and the payer's own share", () => {
     const result = validateExpenseTotals(validExpense());
     expect(result).toMatchObject({

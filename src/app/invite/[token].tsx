@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ShieldCheck, UsersRound } from 'lucide-react-native';
 import { AppButton, AppText, Card, LoadingSkeleton, ScreenContainer } from '@/components/ui';
+import { BrandLogo } from '@/components/brand-logo';
 import { LoadingRegion } from '@/components/loading-skeletons';
 import { repository } from '@/lib/repository';
 import { useAuth } from '@/providers/auth-provider';
@@ -19,9 +20,7 @@ export default function InviteScreen() {
   return (
     <ScreenContainer publicPage contentContainerStyle={{ justifyContent: 'center' }}>
       <View style={styles.brand}>
-        <AppText variant="screenTitle" color={palette.primary}>
-          Pagaste
-        </AppText>
+        <BrandLogo variant="horizontal" width={190} testID="pagaste-brand-logo" />
         <AppText variant="caption" color={palette.textSecondary}>
           Escanea, reparte y cobra.
         </AppText>

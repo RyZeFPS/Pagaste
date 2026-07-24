@@ -1,6 +1,7 @@
 import type { Session, User } from '@supabase/supabase-js';
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -35,6 +36,7 @@ type AuthValue = {
     options?: { next?: string },
   ) => Promise<{ confirmationRequired: boolean }>;
   requestPasswordReset: (email: string) => Promise<void>;
+  completePasswordRecovery: (input: { code?: string; tokenHash?: string }) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   saveProfile: (values: SaveProfileValues) => Promise<void>;
   completeOnboarding: (displayName: string) => Promise<void>;
@@ -52,6 +54,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [loading, setLoading] = useState(supabaseConfigured);
 
   const loadProfile = async (userId: string) => setProfile(await repository.profile(userId));
+
+  const completePasswordRecovery = useCallback(
+    async ({ code, tokenHash }: { code?: string; tokenHash?: string }) => {
+      if (!supabase || Boolean(code) === Boolean(tokenHash)) {
+        throw new Error('INVALID_RECOVERY_CALLBACK');
+      }
+
+      const result = code
+        ? await supabase.auth.exchangeCodeForSession(code)
+        : await supabase.auth.verifyOtp({
+            token_hash: tokenHash!,
+            type: 'recovery',
+          });
+
+      if (result.error || !result.data.session) {
+        throw result.error ?? new Error('INVALID_RECOVERY_SESSION');
+      }
+
+      setSession(result.data.session);
+      setPasswordRecovery(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!supabase) return;
@@ -184,6 +209,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
         if (error) throw error;
       },
+      completePasswordRecovery,
       updatePassword: async (password) => {
         if (!supabase || !session || !passwordRecovery) throw new Error('RECOVERY_REQUIRED');
         const { error } = await supabase.auth.updateUser({ password });
@@ -230,7 +256,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (supabase) await supabase.auth.signOut();
       },
     }),
-    [loading, passwordRecovery, profile, session],
+    [completePasswordRecovery, loading, passwordRecovery, profile, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

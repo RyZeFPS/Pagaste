@@ -82,6 +82,23 @@ test('la recuperación valida un token de un solo uso antes de permitir el cambi
   expect(backend.unhandledRequests).toEqual([]);
 });
 
+test('la recuperación PKCE canjea el código antes de mostrar la nueva contraseña', async ({
+  page,
+}) => {
+  const backend = createMockSupabase();
+  await installMockSupabase(page, backend);
+
+  await page.goto('/forgot-password');
+  await page.getByTestId('forgot-email').fill('alex@example.com');
+  await page.getByTestId('forgot-submit').click();
+  await expect(page.getByText('Revisa tu correo')).toBeVisible();
+
+  await page.goto('/reset-password?code=e2e-recovery-code');
+  await expect(page.getByText('Protege tu cuenta')).toBeVisible();
+  await expect(page.getByLabel('Contraseña nueva')).toBeVisible();
+  expect(backend.unhandledRequests).toEqual([]);
+});
+
 test('un callback incompleto no crea una sesión', async ({ page }) => {
   const backend = createMockSupabase();
   await installMockSupabase(page, backend);

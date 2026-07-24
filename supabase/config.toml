@@ -426,6 +426,9 @@ verify_jwt = true
 [functions.send-reminder]
 verify_jwt = true
 
+[functions.request-payment-check]
+verify_jwt = true
+
 [functions.resolve-dispute]
 verify_jwt = true
 

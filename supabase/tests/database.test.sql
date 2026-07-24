@@ -1,12 +1,13 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(62);
+select plan(70);
 
 select has_table('public', 'profiles', 'profiles exists');
 select has_table('public', 'expenses', 'expenses exists');
 select has_table('public', 'claims', 'claims exists');
 select has_table('public', 'group_invites', 'group invites exist');
+select has_table('public', 'app_notifications', 'app notifications exist');
 select has_column('public', 'profiles', 'payment_phone_e164', 'profile payment phone exists');
 select has_column('public', 'profiles', 'share_payment_phone', 'profile phone consent exists');
 select has_trigger('public', 'groups', 'on_group_created_add_owner', 'new groups automatically add their owner member');
@@ -15,16 +16,30 @@ select ok((select relrowsecurity from pg_class where oid = 'public.profiles'::re
 select ok((select relrowsecurity from pg_class where oid = 'public.expenses'::regclass), 'expenses has RLS');
 select ok((select relrowsecurity from pg_class where oid = 'public.claims'::regclass), 'claims has RLS');
 select ok((select relrowsecurity from pg_class where oid = 'public.push_tokens'::regclass), 'push tokens have RLS');
+select ok((select relrowsecurity from pg_class where oid = 'public.app_notifications'::regclass), 'app notifications have RLS');
 select ok((
-  select count(*) = 15 and bool_and(c.relrowsecurity)
+  select count(*) = 16 and bool_and(c.relrowsecurity)
   from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and c.relname::text = any(array[
     'profiles', 'groups', 'group_members', 'expenses', 'expense_participants',
     'expense_items', 'item_allocations', 'claims', 'claim_events', 'claim_disputes',
-    'receipt_scan_jobs', 'push_tokens', 'push_delivery_logs', 'usage_counters', 'group_invites'
+    'receipt_scan_jobs', 'push_tokens', 'push_delivery_logs', 'usage_counters', 'group_invites',
+    'app_notifications'
   ])
 ), 'every exposed Pagaste table has RLS');
+select policies_are(
+  'public',
+  'app_notifications',
+  array['app_notifications_select_own', 'app_notifications_update_own'],
+  'app notifications expose only own-row policies'
+);
+select has_trigger(
+  'public',
+  'claims',
+  'claims_create_requested_notification',
+  'new linked claims create a durable notification'
+);
 
 select ok(not has_table_privilege('anon', 'public.claims', 'select'), 'anon cannot select claims');
 select ok(not has_table_privilege('anon', 'public.expense_participants', 'select'), 'anon cannot select participants');
@@ -40,6 +55,28 @@ select has_function(
   'mark_claim_received',
   array['uuid', 'uuid'],
   'receiver can record a claim as received through the service RPC'
+);
+select has_function(
+  'public',
+  'request_claim_payment_check',
+  array['uuid', 'uuid'],
+  'debtor can request a bank-check notification through the service RPC'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.request_claim_payment_check(uuid,uuid)',
+    'execute'
+  ),
+  'service role can request a bank-check notification'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.request_claim_payment_check(uuid,uuid)',
+    'execute'
+  ),
+  'authenticated clients cannot spoof bank-check notification actors'
 );
 select ok(
   to_regprocedure('public.confirm_claim_payment(uuid)') is null
@@ -323,6 +360,28 @@ values (
   'admin',
   'active'
 );
+
+select set_config(
+  'request.jwt.claim.sub',
+  '88888888-8888-4888-8888-888888888888',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  jsonb_build_object('sub', current_setting('request.jwt.claim.sub'), 'role', 'authenticated')::text,
+  true
+);
+set local role authenticated;
+select is(
+  (
+    select count(*)
+    from public.group_members
+    where group_id = '99999999-9999-4999-8999-999999999991'
+  ),
+  2::bigint,
+  'active group members can read every member in their shared group'
+);
+reset role;
 
 insert into public.expenses (
   id, created_by, title, total_cents, recoverable_cents, own_share_cents, status

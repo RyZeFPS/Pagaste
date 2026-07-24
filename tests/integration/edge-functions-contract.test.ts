@@ -12,6 +12,7 @@ const authenticatedFunctions = [
   'mark-claim-received',
   'resolve-dispute',
   'send-reminder',
+  'request-payment-check',
   'revoke-claim',
   'create-group-invite',
   'accept-invite',
@@ -43,6 +44,12 @@ describe('Edge Function API contract', () => {
     expect(sharedHttp).toContain('type ApiEnvelope<T>');
     expect(sharedHttp).toMatch(/data:\s*null,\s*error:/);
     expect(sharedHttp).toMatch(/['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    expect(sharedHttp).toContain("replace(/^ALLOWED_ORIGINS\\s*=\\s*/u, '')");
+    expect(sharedHttp).toContain("if (origin) headers['Access-Control-Allow-Origin'] = origin");
+    expect(sharedHttp).not.toContain("configured[0] ?? 'null'");
+    expect(sharedHttp).toContain("'ALLOCATION_METHOD_MISMATCH'");
+    expect(sharedHttp).toContain("'ALLOCATION_PARTICIPANT_MISMATCH'");
+    expect(sharedHttp).toContain('databaseMessage(code)');
   });
 
   it('requires platform JWTs except for token or internal-secret entry points', () => {
@@ -80,6 +87,26 @@ describe('Edge Function API contract', () => {
     }
   });
 
+  it('delivers new linked claims without making push delivery transactional', () => {
+    const createClaims = source('create-claim-links');
+    expect(createClaims).toContain('sendPushToUser');
+    expect(createClaims).toContain("eventType: 'claim_requested'");
+    expect(createClaims).toContain('Promise.allSettled');
+    expect(createClaims).toContain('EdgeRuntime');
+    expect(createClaims).toContain("route: '/settings/notifications'");
+  });
+
+  it('lets a debtor request a bank-check notification without confirming payment', () => {
+    const paymentCheck = source('request-payment-check');
+    expect(paymentCheck).toContain("admin.rpc('request_claim_payment_check'");
+    expect(paymentCheck).toContain('p_actor_user_id: user.id');
+    expect(paymentCheck).toContain("eventType: 'payment_check_requested'");
+    expect(paymentCheck).toContain("route: '/settings/notifications'");
+    expect(paymentCheck).toContain('sendPushToUser');
+    expect(paymentCheck).not.toContain('marked_paid');
+    expect(paymentCheck).not.toContain('update({ status:');
+  });
+
   it('never places server credentials in Expo public variables', () => {
     const sources = allFunctions.map(source).join('\n');
     expect(sources).not.toMatch(/EXPO_PUBLIC_(?:SERVICE|SECRET|OCR_API_KEY|TOKEN_HASH_SECRET)/);
@@ -92,6 +119,18 @@ describe('Edge Function API contract', () => {
     expect(env).toContain('SUPABASE_SECRET_KEYS');
     expect(env).toContain('SUPABASE_ANON_KEY');
     expect(env).toContain('SUPABASE_SERVICE_ROLE_KEY');
+  });
+
+  it('uses a private server OCR provider without exposing its credential', () => {
+    const ocr = readFileSync(join(functionsRoot, '_shared', 'ocr.ts'), 'utf8');
+    const scanReceipt = source('scan-receipt');
+    expect(ocr).toContain("requiredEnv('OCR_API_URL')");
+    expect(ocr).toContain("requiredEnv('OCR_API_KEY')");
+    expect(ocr).toContain("provider === 'http'");
+    expect(ocr).toContain('receiptScanResultSchema.parse');
+    expect(ocr).not.toContain('GEMINI_API_KEY');
+    expect(ocr).not.toContain('EXPO_PUBLIC_OCR');
+    expect(scanReceipt).toContain('.createSignedUrl(receiptPath, 120)');
   });
 
   it('removes private profile photos before deleting an account', () => {

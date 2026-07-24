@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import {
   Bell,
@@ -49,7 +49,7 @@ function SettingsContent() {
     {
       title: 'Notificaciones',
       subtitle: 'Avisos y recordatorios',
-      path: '/settings/notifications' as const,
+      path: '/settings/notification-preferences' as const,
       icon: Bell,
     },
     {
@@ -77,7 +77,7 @@ function SettingsContent() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={title}
-                onPress={() => router.push(path)}
+                onPress={() => router.push(path as Href)}
                 style={({ pressed }) => [
                   styles.settingsRow,
                   pressed && { backgroundColor: palette.primaryLight },

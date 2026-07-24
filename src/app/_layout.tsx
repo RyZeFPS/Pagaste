@@ -2,32 +2,37 @@ import 'react-native-gesture-handler';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { router, Stack } from 'expo-router';
-import * as Notifications from 'expo-notifications';
+import type { NotificationResponse, Subscription } from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProviders } from '@/providers/app-providers';
 import { useAuth } from '@/providers/auth-provider';
 import { getSafeNotificationRedirect } from '@/lib/navigation';
+import { loadNativeNotifications, nativeNotificationsAvailable } from '@/lib/native-notifications';
 
 if (Platform.OS !== 'web') void SplashScreen.preventAutoHideAsync();
 
-if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+if (nativeNotificationsAvailable) {
+  void loadNativeNotifications().then((Notifications) => {
+    Notifications?.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
   });
 }
 
-function openNotification(response: Notifications.NotificationResponse): void {
+function openNotification(response: NotificationResponse): void {
   const route = getSafeNotificationRedirect(response.notification.request.content.data?.route);
   if (!route) return;
   router.push(route);
-  Notifications.clearLastNotificationResponse();
+  void loadNativeNotifications().then((Notifications) =>
+    Notifications?.clearLastNotificationResponse(),
+  );
 }
 
 function RootNavigator() {
@@ -52,12 +57,20 @@ function RootNavigator() {
 
 export default function RootLayout() {
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) openNotification(response);
+    if (!nativeNotificationsAvailable) return;
+    let active = true;
+    let subscription: Subscription | undefined;
+    void loadNativeNotifications().then((Notifications) => {
+      if (!active || !Notifications) return;
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (active && response) openNotification(response);
+      });
+      subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
     });
-    const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      subscription?.remove();
+    };
   }, []);
   return (
     <SafeAreaProvider>

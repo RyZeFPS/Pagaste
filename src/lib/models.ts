@@ -94,8 +94,10 @@ export type Claim = {
   last_reminded_at: string | null;
   reminder_count: number;
   debtor?: Pick<Participant, 'id' | 'user_id' | 'display_name' | 'avatar_path'> | null;
+  creditor?: Pick<Participant, 'id' | 'user_id' | 'display_name' | 'avatar_path'> | null;
   expense?: Pick<Expense, 'id' | 'title' | 'merchant_name' | 'occurred_at' | 'currency'> | null;
   disputes?: ClaimDispute[];
+  events?: { event_type: string; created_at: string }[];
 };
 
 export type Group = {
@@ -157,4 +159,26 @@ export type ClaimLink = {
   debtorParticipantId: string;
   amountCents: number;
   url: string;
+};
+
+export type AppNotificationKind = 'claim_requested' | 'payment_check_requested';
+
+export type AppNotification = {
+  id: string;
+  user_id: string;
+  kind: AppNotificationKind;
+  claim_id: string;
+  read_at: string | null;
+  created_at: string;
+  claim?: {
+    id: string;
+    expense_id: string;
+    amount_cents: number;
+    status: ClaimStatus;
+    debtor?: Pick<Participant, 'id' | 'user_id' | 'display_name' | 'avatar_path'> | null;
+    creditor?: Pick<Participant, 'id' | 'user_id' | 'display_name' | 'avatar_path'> | null;
+    expense?: Pick<Expense, 'id' | 'title' | 'currency' | 'group_id'> & {
+      group?: Pick<Group, 'id' | 'name'> | null;
+    };
+  } | null;
 };

@@ -54,8 +54,8 @@ function ScanContent() {
     setError(undefined);
     setPhase('compressing');
     try {
-      const compressed = await manipulateAsync(uri, [{ resize: { width: 1_600 } }], {
-        compress: 0.72,
+      const compressed = await manipulateAsync(uri, [{ resize: { width: 2_200 } }], {
+        compress: 0.86,
         format: SaveFormat.JPEG,
       });
       setPhase('uploading');

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, CheckCircle2, Circle, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { PageHeader } from '@/components/app-shell';
 import { AppButton, AppText, Card, EmptyState, ScreenContainer } from '@/components/ui';
@@ -21,10 +21,17 @@ type Form = { password: string; passwordConfirmation: string };
 
 export default function ResetPasswordScreen() {
   const auth = useAuth();
+  const { completePasswordRecovery } = auth;
   const router = useRouter();
+  const params = useLocalSearchParams<{ code?: string | string[] }>();
+  const code = Array.isArray(params.code) ? params.code[0] : params.code;
+  const invalidCode = Boolean(code && code.length > 1_024);
   const palette = useAppColors();
   const [serverError, setServerError] = useState<string>();
   const [completed, setCompleted] = useState(false);
+  const [callbackState, setCallbackState] = useState<'idle' | 'loading' | 'error'>(
+    invalidCode ? 'error' : code ? 'loading' : 'idle',
+  );
   const {
     control,
     handleSubmit,
@@ -38,7 +45,43 @@ export default function ResetPasswordScreen() {
   });
   const checks = passwordChecks(useWatch({ control, name: 'password' }));
 
-  if (auth.loading) return <AuthScreenSkeleton />;
+  useEffect(() => {
+    let active = true;
+
+    if (!code || invalidCode) return;
+
+    void completePasswordRecovery({ code })
+      .then(() => {
+        if (!active) return;
+        setCallbackState('idle');
+        router.replace('/(auth)/reset-password');
+      })
+      .catch(() => {
+        if (active) setCallbackState('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [code, completePasswordRecovery, invalidCode, router]);
+
+  if (auth.loading || callbackState === 'loading') return <AuthScreenSkeleton />;
+  if (callbackState === 'error') {
+    return (
+      <ScreenContainer publicPage contentContainerStyle={styles.screen}>
+        <EmptyState
+          title="Este enlace no es válido"
+          body="El enlace ha caducado, ya se ha utilizado o se abrió en otro dispositivo. Solicita uno nuevo desde este navegador."
+          action={
+            <AppButton
+              title="Solicitar otro enlace"
+              onPress={() => router.replace('/(auth)/forgot-password')}
+            />
+          }
+        />
+      </ScreenContainer>
+    );
+  }
   if (!auth.session) return <Redirect href="/(auth)/login" />;
 
   const submit = handleSubmit(async (values) => {

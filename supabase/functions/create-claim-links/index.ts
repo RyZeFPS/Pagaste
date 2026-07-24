@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { optionalEnv } from '../_shared/env.ts';
 import { ApiError, fromDatabaseError, ok, readJson, serve } from '../_shared/http.ts';
+import { sendPushToUser } from '../_shared/push.ts';
 import { requireUser } from '../_shared/supabase.ts';
 import { generatePublicToken, hashPublicToken } from '../_shared/tokens.ts';
 
@@ -37,9 +39,67 @@ function appUrl(): string {
   return value.toString().replace(/\/$/u, '');
 }
 
+function formatMoney(amountCents: number, currency: string): string {
+  return new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amountCents / 100);
+}
+
+async function notifyLinkedDebtors(
+  admin: SupabaseClient,
+  input: {
+    expenseId: string;
+    expenseTitle: string;
+    currency: string;
+    creditorName: string;
+    claims: {
+      claimId: string;
+      debtorParticipantId: string;
+      amountCents: number;
+      token: string;
+    }[];
+  },
+): Promise<void> {
+  const participantIds = input.claims.map((claim) => claim.debtorParticipantId);
+  const { data: participants, error } = await admin
+    .from('expense_participants')
+    .select('id,user_id')
+    .in('id', participantIds);
+  if (error || !participants?.length) return;
+
+  const users = new Map(
+    participants
+      .filter(
+        (participant): participant is { id: string; user_id: string } =>
+          typeof participant.user_id === 'string',
+      )
+      .map((participant) => [participant.id, participant.user_id]),
+  );
+
+  await Promise.allSettled(
+    input.claims.map(async (claim) => {
+      const userId = users.get(claim.debtorParticipantId);
+      if (!userId) return;
+      await sendPushToUser(admin, {
+        userId,
+        eventType: 'claim_requested',
+        title: 'Nueva solicitud de pago',
+        body: `${input.creditorName} te ha solicitado ${formatMoney(claim.amountCents, input.currency)} por ${input.expenseTitle}.`,
+        data: {
+          route: '/settings/notifications',
+          claimId: claim.claimId,
+          expenseId: input.expenseId,
+        },
+      });
+    }),
+  );
+}
+
 serve(async (req) => {
   const input = inputSchema.parse(await readJson(req));
-  const { client } = await requireUser(req);
+  const { client, admin, user } = await requireUser(req);
   const baseUrl = appUrl();
   const secrets = await Promise.all(
     input.claims.map(async (claim) => {
@@ -64,19 +124,45 @@ serve(async (req) => {
       row,
     ]),
   );
+  const createdClaims = secrets.map((secret) => {
+    const row = rows.get(secret.debtorParticipantId);
+    if (!row) throw new ApiError('CLAIMS_CREATE_FAILED', 'Falta una solicitud creada.', 500);
+    return {
+      claimId: row.claim_id,
+      debtorParticipantId: secret.debtorParticipantId,
+      amountCents: row.amount_cents,
+      token: secret.token,
+      url: `${baseUrl}/c/${secret.token}`,
+    };
+  });
+
+  const [{ data: expense }, { data: creditor }] = await Promise.all([
+    admin.from('expenses').select('title,currency').eq('id', input.expenseId).maybeSingle(),
+    admin.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  if (expense && creditor) {
+    const delivery = notifyLinkedDebtors(admin, {
+      expenseId: input.expenseId,
+      expenseTitle: expense.title,
+      currency: expense.currency,
+      creditorName: creditor.display_name,
+      claims: createdClaims,
+    }).catch((error: unknown) => {
+      console.error('Claim push delivery failed', error instanceof Error ? error.name : 'Unknown');
+    });
+    const edgeRuntime = (
+      globalThis as typeof globalThis & {
+        EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void };
+      }
+    ).EdgeRuntime;
+    if (edgeRuntime) edgeRuntime.waitUntil(delivery);
+    else await delivery;
+  }
+
   return ok(
     req,
     {
-      claims: secrets.map((secret) => {
-        const row = rows.get(secret.debtorParticipantId);
-        if (!row) throw new ApiError('CLAIMS_CREATE_FAILED', 'Falta una solicitud creada.', 500);
-        return {
-          claimId: row.claim_id,
-          debtorParticipantId: secret.debtorParticipantId,
-          amountCents: row.amount_cents,
-          url: `${baseUrl}/c/${secret.token}`,
-        };
-      }),
+      claims: createdClaims.map(({ token: _token, ...claim }) => claim),
     },
     201,
   );

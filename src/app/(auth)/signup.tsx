@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle2, Circle, ReceiptText, ShieldCheck, UserPlus } from 'lucide-react-native';
+import { CheckCircle2, Circle, ShieldCheck, UserPlus } from 'lucide-react-native';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
+import { BrandLogo } from '@/components/brand-logo';
 import { PasswordField } from '@/components/password-field';
 import { AuthScreenSkeleton } from '@/components/loading-skeletons';
 import { useAuth } from '@/providers/auth-provider';
@@ -92,17 +93,10 @@ export default function SignUpScreen() {
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
       <View style={styles.content}>
         <View style={styles.brand} accessibilityRole="header">
-          <View style={[styles.brandMark, { backgroundColor: palette.primary }]}>
-            <ReceiptText color={palette.white} size={23} strokeWidth={2.2} />
-          </View>
-          <View>
-            <AppText variant="screenTitle" color={palette.primary}>
-              Pagaste
-            </AppText>
-            <AppText variant="caption" color={palette.textSecondary}>
-              Escanea, reparte y cobra.
-            </AppText>
-          </View>
+          <BrandLogo variant="horizontal" width={200} testID="pagaste-brand-logo" />
+          <AppText variant="caption" color={palette.textSecondary}>
+            Escanea, reparte y cobra.
+          </AppText>
         </View>
 
         <Card padding="spacious" style={styles.formCard}>
@@ -300,15 +294,7 @@ const styles = StyleSheet.create({
   screen: { justifyContent: 'center' },
   content: { width: '100%', gap: spacing.lg },
   flex: { flex: 1 },
-  brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  brandMark: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    transform: [{ rotate: '-3deg' }],
-  },
+  brand: { alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   formCard: { gap: spacing.md },
   heading: {
     flexDirection: 'row',

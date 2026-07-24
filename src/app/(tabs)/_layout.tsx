@@ -1,6 +1,13 @@
 import { Tabs } from 'expo-router';
 import { Activity, ReceiptText, UserRound, UsersRound } from 'lucide-react-native';
-import { Animated as RNAnimated, Easing, Platform, StyleSheet, View } from 'react-native';
+import {
+  Animated as RNAnimated,
+  Easing,
+  Platform,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { RequireAuth } from '@/components/app-shell';
 import { AnimatedTabIcon } from '@/components/animated-tab-icon';
@@ -10,6 +17,8 @@ import { useAppColors } from '@/providers/app-providers';
 export default function TabsLayout() {
   const palette = useAppColors();
   const reduceMotion = useReducedMotion();
+  const { width: viewportWidth } = useWindowDimensions();
+  const nativeTabBarInset = Math.max(16, (viewportWidth - 480) / 2);
   return (
     <RequireAuth>
       <View style={[styles.tabsRoot, { backgroundColor: palette.background }]}>
@@ -46,6 +55,13 @@ export default function TabsLayout() {
             }),
             tabBarStyle: [
               styles.tabBar,
+              Platform.OS !== 'web' && {
+                bottom: 20,
+                start: nativeTabBarInset,
+                end: nativeTabBarInset,
+                height: 68,
+                minHeight: 68,
+              },
               {
                 backgroundColor: palette.surface,
                 borderColor: palette.border,
@@ -123,10 +139,6 @@ const styles = StyleSheet.create({
         right: '4%',
         width: 'auto',
         marginHorizontal: 'auto',
-      },
-      default: {
-        width: '92%',
-        alignSelf: 'center',
       },
     }) ?? {}),
     minHeight: 74,

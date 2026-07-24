@@ -3,17 +3,19 @@ import { Pressable, Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
-import { ChevronRight, Plus, ReceiptText, UserPlus } from 'lucide-react-native';
+import { Camera, ChevronRight, Plus, ReceiptText, UserPlus } from 'lucide-react-native';
 import {
   AppButton,
   AppInput,
   AppText,
   Avatar,
   AvatarGroup,
+  BottomSheet,
   Card,
   Divider,
   EmptyState,
   ErrorState,
+  IconButton,
   ScreenContainer,
 } from '@/components/ui';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
@@ -63,6 +65,7 @@ function GroupContent() {
   const { formatMoney, formatDate } = useI18n();
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState<string>();
+  const [showInvite, setShowInvite] = useState(false);
   const [selectingPhoto, setSelectingPhoto] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState<string | undefined>(() =>
     avatarUploadFailed === '1'
@@ -148,8 +151,8 @@ function GroupContent() {
     }
   };
 
-  const openNewExpense = () =>
-    router.push({ pathname: '/expense/new', params: { mode: 'manual', groupId } });
+  const openNewExpense = (mode: 'scan' | 'manual') =>
+    router.push({ pathname: '/expense/new', params: { mode, groupId } });
 
   if (query.isPending && !query.data) return <ScreenLoadingSkeleton variant="group" />;
   if (query.isError || !query.data)
@@ -211,13 +214,31 @@ function GroupContent() {
               </AppText>
             </View>
           ) : null}
-          <AppButton
-            title="Añadir gasto"
-            size="lg"
-            fullWidth
-            leftIcon={<Plus color={palette.white} size={21} strokeWidth={2.2} />}
-            onPress={openNewExpense}
-          />
+          <View style={styles.expenseActions}>
+            <View style={styles.expenseActionsCopy}>
+              <AppText variant="heading">Añadir gasto</AppText>
+              <AppText variant="bodySmall" color={palette.textSecondary}>
+                Escanea el ticket o introduce el total a mano.
+              </AppText>
+            </View>
+            <AppButton
+              title="Escanear ticket"
+              accessibilityLabel={`Escanear ticket para ${group.name}`}
+              size="lg"
+              fullWidth
+              leftIcon={<Camera color={palette.white} size={21} strokeWidth={2.2} />}
+              onPress={() => openNewExpense('scan')}
+            />
+            <AppButton
+              title="Añadir manualmente"
+              accessibilityLabel={`Añadir gasto manualmente para ${group.name}`}
+              variant="outline"
+              size="md"
+              fullWidth
+              leftIcon={<Plus color={palette.primary} size={19} strokeWidth={2.2} />}
+              onPress={() => openNewExpense('manual')}
+            />
+          </View>
         </Card>
 
         <Animated.View entering={enter(80)}>
@@ -235,9 +256,21 @@ function GroupContent() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <AppText variant="sectionTitle">Personas</AppText>
-            <AppText variant="bodySmall" color={palette.textMuted}>
-              {members.length}
-            </AppText>
+            <View style={styles.memberHeaderActions}>
+              <AppText variant="bodySmall" color={palette.textMuted}>
+                {members.length}
+              </AppText>
+              <IconButton
+                label="Invitar a alguien"
+                variant="soft"
+                size={38}
+                icon={<UserPlus color={palette.primary} size={19} strokeWidth={2} />}
+                onPress={() => {
+                  setInviteMessage(undefined);
+                  setShowInvite(true);
+                }}
+              />
+            </View>
           </View>
           <Card variant="grouped">
             {members.map((member, index) => {
@@ -252,7 +285,7 @@ function GroupContent() {
               return (
                 <View key={member.id}>
                   <View style={styles.memberRow}>
-                    <Avatar name={member.display_name} size={44} />
+                    <Avatar name={member.display_name} size={38} />
                     <View style={styles.memberCopy}>
                       <AppText variant="label" numberOfLines={1}>
                         {member.display_name}
@@ -293,58 +326,10 @@ function GroupContent() {
                       </View>
                     )}
                   </View>
-                  {index < members.length - 1 ? <Divider inset={72} /> : null}
+                  {index < members.length - 1 ? <Divider inset={64} /> : null}
                 </View>
               );
             })}
-
-            {members.length ? <Divider inset={72} /> : null}
-            <View style={styles.inviteBlock}>
-              <View style={styles.inviteHeading}>
-                <View style={[styles.inviteIcon, { backgroundColor: palette.primaryLight }]}>
-                  <UserPlus color={palette.primary} size={20} strokeWidth={1.9} />
-                </View>
-                <View style={styles.memberCopy}>
-                  <AppText variant="label">Invitar a alguien</AppText>
-                  <AppText variant="caption" color={palette.textSecondary}>
-                    El correo es opcional; siempre podrás compartir el enlace.
-                  </AppText>
-                </View>
-              </View>
-              <AppInput
-                label="Correo de la invitación (opcional)"
-                placeholder="persona@correo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={inviteEmail}
-                onChangeText={setInviteEmail}
-              />
-              <AppButton
-                title="Crear y compartir invitación"
-                variant="outline"
-                fullWidth
-                loading={invite.isPending}
-                onPress={() => invite.mutate()}
-              />
-              {inviteMessage ? (
-                <View
-                  style={[
-                    styles.inviteMessage,
-                    {
-                      backgroundColor: invite.isError ? palette.dangerLight : palette.successLight,
-                    },
-                  ]}
-                >
-                  <AppText
-                    variant="bodySmall"
-                    color={invite.isError ? palette.dangerInk : palette.successInk}
-                  >
-                    {inviteMessage}
-                  </AppText>
-                </View>
-              ) : null}
-            </View>
           </Card>
         </View>
 
@@ -364,11 +349,18 @@ function GroupContent() {
                 title="Aún no hay gastos"
                 body="Crea el primero para empezar a repartir con el grupo."
                 action={
-                  <AppButton
-                    title="Añadir primer gasto"
-                    variant="outline"
-                    onPress={openNewExpense}
-                  />
+                  <View style={styles.emptyExpenseActions}>
+                    <AppButton
+                      title="Escanear primer ticket"
+                      leftIcon={<Camera color={palette.white} size={19} />}
+                      onPress={() => openNewExpense('scan')}
+                    />
+                    <AppButton
+                      title="Añadir manualmente"
+                      variant="ghost"
+                      onPress={() => openNewExpense('manual')}
+                    />
+                  </View>
                 }
               />
             </Card>
@@ -425,6 +417,53 @@ function GroupContent() {
           )}
         </View>
       </View>
+
+      <BottomSheet
+        visible={showInvite}
+        onClose={() => setShowInvite(false)}
+        title="Invitar al grupo"
+      >
+        <View style={styles.inviteSheetIntro}>
+          <View style={[styles.inviteIcon, { backgroundColor: palette.primaryLight }]}>
+            <UserPlus color={palette.primary} size={21} strokeWidth={1.9} />
+          </View>
+          <AppText variant="bodySmall" color={palette.textSecondary} style={styles.memberCopy}>
+            Escribe su correo o déjalo vacío para compartir directamente el enlace privado.
+          </AppText>
+        </View>
+        <AppInput
+          label="Correo de la invitación (opcional)"
+          placeholder="persona@correo.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={inviteEmail}
+          onChangeText={setInviteEmail}
+        />
+        <AppButton
+          title="Crear y compartir invitación"
+          fullWidth
+          loading={invite.isPending}
+          onPress={() => invite.mutate()}
+        />
+        {inviteMessage ? (
+          <View
+            style={[
+              styles.inviteMessage,
+              {
+                backgroundColor: invite.isError ? palette.dangerLight : palette.successLight,
+              },
+            ]}
+          >
+            <AppText
+              variant="bodySmall"
+              color={invite.isError ? palette.dangerInk : palette.successInk}
+            >
+              {inviteMessage}
+            </AppText>
+          </View>
+        ) : null}
+      </BottomSheet>
     </ScreenContainer>
   );
 }
@@ -452,6 +491,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
   },
+  expenseActions: {
+    gap: spacing.sm,
+  },
+  expenseActionsCopy: {
+    marginBottom: spacing.xs,
+    gap: spacing.xxs,
+  },
   section: {
     gap: spacing.sm,
   },
@@ -463,10 +509,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  memberHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   memberRow: {
-    minHeight: 68,
+    minHeight: 58,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -478,24 +529,20 @@ const styles = StyleSheet.create({
   },
   memberStatus: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs,
     borderRadius: radii.pill,
   },
   reputationBadge: {
-    minHeight: 30,
+    minHeight: 28,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.pill,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
-  inviteBlock: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-  },
-  inviteHeading: {
+  inviteSheetIntro: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
   },
   inviteIcon: {
@@ -523,6 +570,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyExpenseActions: {
+    width: '100%',
+    gap: spacing.sm,
   },
   expenseRow: {
     minHeight: 76,

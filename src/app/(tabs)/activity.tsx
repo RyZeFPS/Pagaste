@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown, FadeInLeft, ReduceMotion } from 'react-native-reanimated';
 import {
@@ -8,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   MailCheck,
+  SearchCheck,
   WalletCards,
   XCircle,
 } from 'lucide-react-native';
@@ -25,6 +27,7 @@ import { ListRowsSkeleton } from '@/components/loading-skeletons';
 import { MerchantLogo } from '@/components/merchant-logo';
 import { repository } from '@/lib/repository';
 import { useAppColors } from '@/providers/app-providers';
+import { useAuth } from '@/providers/auth-provider';
 import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
@@ -33,12 +36,47 @@ const activityEnter = (index: number) =>
   FadeInLeft.duration(330)
     .delay(55 + Math.min(index, 5) * 34)
     .reduceMotion(ReduceMotion.System);
+const PAYMENT_CHECK_DELAY_MS = 10 * 60 * 1000;
+const PAYMENT_CHECK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function paymentCheckAvailability(
+  sentAt: string | null,
+  events: { event_type: string; created_at: string }[] | undefined,
+) {
+  const now = Date.now();
+  const sentTime = sentAt ? new Date(sentAt).getTime() : now;
+  const readyAt = sentTime + PAYMENT_CHECK_DELAY_MS;
+  const lastRequest = events
+    ?.filter((event) => event.event_type === 'payment_check_requested')
+    .reduce((latest, event) => Math.max(latest, new Date(event.created_at).getTime()), 0);
+  if (readyAt > now) {
+    return {
+      enabled: false,
+      label: `Disponible en ${Math.max(1, Math.ceil((readyAt - now) / 60_000))} min`,
+    };
+  }
+  if (lastRequest && lastRequest + PAYMENT_CHECK_COOLDOWN_MS > now) {
+    return { enabled: false, label: 'Aviso enviado' };
+  }
+  return { enabled: true, label: 'Pedir que revise el ingreso' };
+}
 
 export default function ActivityScreen() {
   const router = useRouter();
   const palette = useAppColors();
+  const auth = useAuth();
   const { formatMoney } = useI18n();
+  const cache = useQueryClient();
+  const [feedback, setFeedback] = useState<string>();
   const query = useQuery({ queryKey: ['claims'], queryFn: () => repository.listClaims() });
+  const paymentCheck = useMutation({
+    mutationFn: repository.requestPaymentCheck,
+    onSuccess: async () => {
+      setFeedback('Aviso enviado. El cobro sigue pendiente hasta que la otra persona lo confirme.');
+      await cache.invalidateQueries({ queryKey: ['claims'] });
+    },
+    onError: (error: Error) => setFeedback(error.message),
+  });
 
   return (
     <ScreenContainer floatingTabs>
@@ -51,6 +89,14 @@ export default function ActivityScreen() {
             Sigue cada cobro sin perderte ningún movimiento.
           </AppText>
         </Animated.View>
+
+        {feedback ? (
+          <Card variant="flat" style={{ backgroundColor: palette.primaryLight }}>
+            <AppText variant="bodySmall" color={palette.primary}>
+              {feedback}
+            </AppText>
+          </Card>
+        ) : null}
 
         {query.isPending && query.data === undefined ? (
           <Animated.View entering={activityEnter(0)}>
@@ -73,7 +119,7 @@ export default function ActivityScreen() {
               </View>
               <EmptyState
                 title="Todo tranquilo por aquí"
-                body="Cuando envíes un cobro, aquí verás pagos, recordatorios y revisiones."
+                body="Cuando envíes o recibas una solicitud, aquí verás pagos, recordatorios y revisiones."
                 action={
                   <AppButton title="Crear un gasto" onPress={() => router.push('/expense/new')} />
                 }
@@ -83,20 +129,27 @@ export default function ActivityScreen() {
         ) : (
           <Card variant="grouped">
             {query.data.map((claim, index) => {
-              const name = claim.debtor?.display_name ?? 'Participante';
+              const incoming = claim.debtor?.user_id === auth.user?.id;
+              const name = incoming
+                ? (claim.creditor?.display_name ?? 'Una persona del grupo')
+                : (claim.debtor?.display_name ?? 'Participante');
               const merchantName = claim.expense?.merchant_name?.trim() || null;
               const presentation =
                 claim.status === 'received'
                   ? {
                       label: 'Recibido',
-                      message: `Has marcado como recibido el cobro de ${name}.`,
+                      message: incoming
+                        ? `${name} ha marcado el cobro como recibido.`
+                        : `Has marcado como recibido el cobro de ${name}.`,
                       color: palette.successInk,
                       Icon: CheckCircle2,
                     }
                   : claim.status === 'disputed'
                     ? {
                         label: 'En revisión',
-                        message: `${name} ha pedido revisar el cobro.`,
+                        message: incoming
+                          ? `Has pedido a ${name} revisar este cobro.`
+                          : `${name} ha pedido revisar el cobro.`,
                         color: palette.dangerInk,
                         Icon: AlertCircle,
                       }
@@ -110,13 +163,17 @@ export default function ActivityScreen() {
                       : claim.status === 'reminder_sent'
                         ? {
                             label: 'Recordatorio enviado',
-                            message: `${name} tiene un recordatorio reciente.`,
+                            message: incoming
+                              ? `${name} te ha enviado un recordatorio.`
+                              : `${name} tiene un recordatorio reciente.`,
                             color: palette.primary,
                             Icon: MailCheck,
                           }
                         : {
                             label: 'Pendiente',
-                            message: `Esperando el pago de ${name}.`,
+                            message: incoming
+                              ? `${name} te ha solicitado este pago.`
+                              : `Esperando el pago de ${name}.`,
                             color: palette.warningInk,
                             Icon: Clock3,
                           };
@@ -124,19 +181,32 @@ export default function ActivityScreen() {
                 ? `${presentation.message} · ${merchantName}`
                 : presentation.message;
 
+              const canRequestCheck =
+                incoming && ['pending', 'reminder_sent'].includes(claim.status);
+              const checkAvailability = paymentCheckAvailability(claim.sent_at, claim.events);
+
               return (
                 <Animated.View key={claim.id} entering={activityEnter(index)}>
                   <Pressable
-                    accessibilityRole="button"
+                    accessibilityRole={incoming ? undefined : 'button'}
                     accessibilityLabel={`${presentation.label} de ${name}${merchantName ? ` en ${merchantName}` : ''}, ${formatMoney(claim.amount_cents)}`}
-                    onPress={() => router.push(`/expense/${claim.expense_id}/status`)}
+                    disabled={incoming}
+                    onPress={
+                      incoming
+                        ? undefined
+                        : () => router.push(`/expense/${claim.expense_id}/status`)
+                    }
                     style={({ pressed }) => [
                       styles.activityRow,
                       pressed && { backgroundColor: palette.primaryLight },
                     ]}
                   >
                     <View style={styles.avatarWithMerchant}>
-                      <Avatar name={name} uri={claim.debtor?.avatar_path} size={46} />
+                      <Avatar
+                        name={name}
+                        uri={incoming ? claim.creditor?.avatar_path : claim.debtor?.avatar_path}
+                        size={46}
+                      />
                       {merchantName ? (
                         <MerchantLogo
                           merchantName={merchantName}
@@ -169,8 +239,38 @@ export default function ActivityScreen() {
                         </AppText>
                       </View>
                     </View>
-                    <ChevronRight color={palette.textMuted} size={19} strokeWidth={1.8} />
+                    {!incoming ? (
+                      <ChevronRight color={palette.textMuted} size={19} strokeWidth={1.8} />
+                    ) : null}
                   </Pressable>
+                  {canRequestCheck ? (
+                    <View
+                      style={[
+                        styles.paymentCheck,
+                        { borderTopColor: palette.divider, backgroundColor: palette.background },
+                      ]}
+                    >
+                      <View style={styles.paymentCheckCopy}>
+                        <SearchCheck color={palette.primary} size={18} />
+                        <AppText
+                          variant="caption"
+                          color={palette.textSecondary}
+                          style={styles.flex}
+                        >
+                          Si ya hiciste el Bizum, avisa para que revise su banco. No confirma el
+                          pago ni cambia su estado.
+                        </AppText>
+                      </View>
+                      <AppButton
+                        title={checkAvailability.label}
+                        size="sm"
+                        variant="outline"
+                        disabled={!checkAvailability.enabled}
+                        loading={paymentCheck.isPending && paymentCheck.variables === claim.id}
+                        onPress={() => paymentCheck.mutate(claim.id)}
+                      />
+                    </View>
+                  ) : null}
                   {index < query.data.length - 1 ? <Divider inset={74} /> : null}
                 </Animated.View>
               );
@@ -260,5 +360,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '600',
+  },
+  paymentCheck: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  paymentCheckCopy: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
+    minWidth: 0,
   },
 });

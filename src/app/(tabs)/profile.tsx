@@ -186,35 +186,21 @@ export default function ProfileScreen() {
                 />
               </View>
 
-              <View style={styles.avatarControls}>
+              {auth.profile?.avatar_path ? (
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="Quitar foto de perfil"
                   disabled={avatarBusy}
-                  onPress={() => void chooseAvatar()}
-                  style={({ pressed }) => pressed && styles.pressed}
+                  onPress={() => void removeAvatar()}
+                  style={({ pressed }) => [
+                    styles.removePhotoButton,
+                    { backgroundColor: palette.dangerLight },
+                    pressed && styles.pressed,
+                  ]}
                 >
-                  <AppText color={palette.primary} style={styles.avatarControlText}>
-                    {auth.profile?.avatar_path ? 'Cambiar foto' : 'Añadir foto'}
-                  </AppText>
+                  <Trash2 color={palette.danger} size={17} strokeWidth={2} />
                 </Pressable>
-                {auth.profile?.avatar_path ? (
-                  <>
-                    <View style={[styles.controlDot, { backgroundColor: palette.divider }]} />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Quitar foto de perfil"
-                      disabled={avatarBusy}
-                      onPress={() => void removeAvatar()}
-                      style={({ pressed }) => [styles.removePhoto, pressed && styles.pressed]}
-                    >
-                      <Trash2 color={palette.danger} size={15} strokeWidth={2} />
-                      <AppText color={palette.danger} style={styles.avatarControlText}>
-                        Quitar
-                      </AppText>
-                    </Pressable>
-                  </>
-                ) : null}
-              </View>
+              ) : null}
               {avatarError ? (
                 <AppText variant="caption" color={palette.danger} style={styles.avatarError}>
                   {avatarError}
@@ -357,16 +343,22 @@ const styles = StyleSheet.create({
   avatarFrame: { zIndex: 1, alignItems: 'center', justifyContent: 'center' },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 36, lineHeight: 42, fontWeight: '800', letterSpacing: -1 },
-  avatarAction: { zIndex: 2 },
+  avatarAction: {
+    position: 'relative',
+    zIndex: 2,
+    overflow: 'visible',
+  },
   avatarPressed: { transform: [{ scale: 0.98 }] },
   cameraBadge: {
     position: 'absolute',
-    right: 1,
-    bottom: 1,
+    right: -2,
+    bottom: -2,
     width: 38,
     height: 38,
     borderRadius: 19,
     borderWidth: 3,
+    zIndex: 5,
+    elevation: 5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -407,16 +399,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  avatarControls: {
-    minHeight: 28,
-    flexDirection: 'row',
+  removePhotoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
   },
-  avatarControlText: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  controlDot: { width: 4, height: 4, borderRadius: 2 },
-  removePhoto: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   avatarError: { textAlign: 'center' },
   editButton: { minWidth: 164, marginTop: spacing.xs },
   section: { gap: spacing.md },

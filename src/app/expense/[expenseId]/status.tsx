@@ -28,7 +28,6 @@ import {
   ListCard,
   ProgressBar,
   ScreenContainer,
-  StickyFooter,
   StatusLabel,
 } from '@/components/ui';
 import { sumCents } from '@/domain/money';
@@ -367,10 +366,8 @@ function StatusContent() {
             </AppText>
           </Card>
         ) : null}
-      </ScreenContainer>
 
-      {pendingClaims.length ? (
-        <StickyFooter>
+        {pendingClaims.length ? (
           <AppButton
             title={
               eligiblePending.length
@@ -384,8 +381,8 @@ function StatusContent() {
             disabled={!eligiblePending.length}
             onPress={() => void remindAll()}
           />
-        </StickyFooter>
-      ) : null}
+        ) : null}
+      </ScreenContainer>
 
       <BottomSheet visible={showMenu} onClose={() => setShowMenu(false)} title="Opciones del gasto">
         {query.data.receipt_path ? (

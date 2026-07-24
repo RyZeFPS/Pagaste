@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { LockKeyhole, LogIn, ReceiptText, ScanLine, ShieldCheck } from 'lucide-react-native';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
+import { BrandLogo } from '@/components/brand-logo';
 import { PasswordField } from '@/components/password-field';
 import { AuthScreenSkeleton } from '@/components/loading-skeletons';
 import { useAuth } from '@/providers/auth-provider';
@@ -76,17 +77,10 @@ export default function LoginScreen() {
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
       <View style={styles.content}>
         <View style={styles.brand} accessibilityRole="header">
-          <View style={[styles.brandMark, { backgroundColor: palette.primary }]}>
-            <ReceiptText color={palette.white} size={28} strokeWidth={2.2} />
-          </View>
-          <View style={styles.brandCopy}>
-            <AppText variant="display" color={palette.primary}>
-              Pagaste
-            </AppText>
-            <AppText variant="label" color={palette.textSecondary}>
-              Escanea, reparte y cobra.
-            </AppText>
-          </View>
+          <BrandLogo variant="horizontal" width={226} testID="pagaste-brand-logo" />
+          <AppText variant="label" color={palette.textSecondary}>
+            Escanea, reparte y cobra.
+          </AppText>
         </View>
 
         <View
@@ -252,16 +246,7 @@ const styles = StyleSheet.create({
   screen: { justifyContent: 'center' },
   content: { width: '100%', gap: spacing.lg },
   flex: { flex: 1 },
-  brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  brandMark: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    transform: [{ rotate: '-3deg' }],
-  },
-  brandCopy: { gap: spacing.xxs },
+  brand: { alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   illustration: {
     height: 112,
     borderRadius: radii.card,

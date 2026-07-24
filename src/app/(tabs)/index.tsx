@@ -14,9 +14,11 @@ import {
   ScreenContainer,
 } from '@/components/ui';
 import { HomeDataSkeleton } from '@/components/loading-skeletons';
+import { BrandLogo } from '@/components/brand-logo';
 import { repository } from '@/lib/repository';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
+import { useNotificationCenter } from '@/providers/notification-center-provider';
 import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 import { sumCents } from '@/domain/money';
@@ -156,6 +158,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const auth = useAuth();
   const palette = useAppColors();
+  const notificationCenter = useNotificationCenter();
   const { formatMoney, formatDate } = useI18n();
   const expenses = useQuery({
     queryKey: ['expenses'],
@@ -203,16 +206,33 @@ export default function HomeScreen() {
             <AppText color={palette.primary} style={styles.greeting}>
               ¡Hola, {firstName}!
             </AppText>
-            <AppText style={styles.brand}>Pagaste</AppText>
+            <BrandLogo
+              variant="horizontal"
+              width={146}
+              accessibilityLabel="Pagaste"
+              testID="home-brand-logo"
+              style={styles.brand}
+            />
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Notificaciones"
+            accessibilityLabel={
+              notificationCenter.unreadCount
+                ? `Notificaciones, ${notificationCenter.unreadCount} sin ver`
+                : 'Notificaciones'
+            }
             hitSlop={8}
             onPress={() => router.push('/settings/notifications')}
             style={({ pressed }) => [styles.bellButton, pressed && styles.pressed]}
           >
             <Bell color={palette.text} size={24} strokeWidth={1.9} />
+            {notificationCenter.unreadCount > 0 ? (
+              <View style={[styles.notificationBadge, { backgroundColor: palette.danger }]}>
+                <AppText color={palette.white} style={styles.notificationBadgeText}>
+                  +{Math.min(notificationCenter.unreadCount, 99)}
+                </AppText>
+              </View>
+            ) : null}
           </Pressable>
         </Animated.View>
 
@@ -462,17 +482,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   brand: {
-    fontSize: 31,
-    lineHeight: 36,
-    fontWeight: '800',
-    letterSpacing: -0.7,
+    marginTop: 1,
   },
   bellButton: {
+    position: 'relative',
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 22,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: -3,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeText: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '800',
   },
   hero: {
     position: 'relative',

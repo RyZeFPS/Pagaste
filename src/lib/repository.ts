@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { appUrl, getSupabase } from '@/lib/supabase/client';
 import { AppError } from '@/lib/api-error';
@@ -6,6 +7,7 @@ import { sanitizePublicClaimDto } from '@/domain/public-claims';
 import type {
   Claim,
   ClaimLink,
+  AppNotification,
   Expense,
   ExpenseDetail,
   ExpenseItem,
@@ -30,9 +32,36 @@ function unwrap<T>(result: {
 
 type EdgeEnvelope<T> = { data: T | null; error: { code: string; message: string } | null };
 
+function isEdgeError(value: unknown): value is { code: string; message: string } {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.code === 'string' && typeof candidate.message === 'string';
+}
+
+async function parseFunctionError(error: unknown): Promise<AppError> {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context && typeof context === 'object' && 'json' in context) {
+      try {
+        const payload = await (context as { json: () => Promise<unknown> }).json();
+        if (payload && typeof payload === 'object') {
+          const edgeError = (payload as { error?: unknown }).error;
+          if (isEdgeError(edgeError)) return new AppError(edgeError.code, edgeError.message);
+        }
+      } catch {
+        // Fall back to the SDK error when the response is not our JSON envelope.
+      }
+    }
+  }
+  return new AppError(
+    'FUNCTION_ERROR',
+    error instanceof Error ? error.message : 'No se pudo completar la operación.',
+  );
+}
+
 async function invoke<T>(name: string, body: object): Promise<T> {
   const result = await getSupabase().functions.invoke<EdgeEnvelope<T>>(name, { body });
-  if (result.error) throw new AppError('FUNCTION_ERROR', result.error.message);
+  if (result.error) throw await parseFunctionError(result.error);
   if (!result.data || result.data.error || !result.data.data) {
     throw new AppError(
       result.data?.error?.code ?? 'FUNCTION_ERROR',
@@ -121,7 +150,7 @@ export const repository = {
       await client.from('profiles').select('*').eq('id', userId).single(),
     ) as Profile;
     const bytes = await readImageBytes(uri, PROFILE_AVATAR_MAX_BYTES);
-    const path = `${userId}/${crypto.randomUUID()}.jpg`;
+    const path = `${userId}/${Crypto.randomUUID()}.jpg`;
     const uploaded = await client.storage
       .from('profile-avatars')
       .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
@@ -176,12 +205,41 @@ export const repository = {
     let query = getSupabase()
       .from('claims')
       .select(
-        '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency)',
+        '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), events:claim_events(event_type,created_at)',
       )
       .order('created_at', { ascending: false });
     if (expenseId) query = query.eq('expense_id', expenseId);
     const result = await query.limit(100);
     return unwrap(result) as Claim[];
+  },
+  async listAppNotifications(userId: string): Promise<AppNotification[]> {
+    const { data, error } = await getSupabase()
+      .from('app_notifications')
+      .select(
+        'id,user_id,kind,claim_id,read_at,created_at, claim:claims!app_notifications_claim_id_fkey(id,expense_id,amount_cents,status, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,currency,group_id, group:groups!expenses_group_id_fkey(id,name)))',
+      )
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new AppError(error.code, error.message);
+    return (data ?? []) as unknown as AppNotification[];
+  },
+  async unreadNotificationCount(userId: string): Promise<number> {
+    const { count, error } = await getSupabase()
+      .from('app_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('read_at', null);
+    if (error) throw new AppError(error.code, error.message);
+    return count ?? 0;
+  },
+  async markNotificationsRead(notificationIds: string[]): Promise<void> {
+    if (!notificationIds.length) return;
+    const { error } = await getSupabase()
+      .from('app_notifications')
+      .update({ read_at: new Date().toISOString() })
+      .in('id', notificationIds);
+    if (error) throw new AppError(error.code, error.message);
   },
   async expense(id: string): Promise<ExpenseDetail> {
     const client = getSupabase();
@@ -255,7 +313,13 @@ export const repository = {
   },
   async addItem(
     expenseId: string,
-    input: { name: string; lineTotalCents: number; quantity?: number; source?: string },
+    input: {
+      name: string;
+      lineTotalCents: number;
+      quantity?: number;
+      source?: string;
+      category?: string | null;
+    },
     sortOrder: number,
   ): Promise<ExpenseItem> {
     const result = await getSupabase()
@@ -272,6 +336,7 @@ export const repository = {
             ? input.lineTotalCents / input.quantity
             : null,
         line_total_cents: input.lineTotalCents,
+        category: input.category ?? null,
         sort_order: sortOrder,
         source: input.source ?? 'manual',
       })
@@ -379,7 +444,7 @@ export const repository = {
       await client.from('groups').select('*').eq('id', groupId).single(),
     ) as Group;
     const bytes = await readImageBytes(uri, GROUP_AVATAR_MAX_BYTES);
-    const path = `${groupId}/${crypto.randomUUID()}.jpg`;
+    const path = `${groupId}/${Crypto.randomUUID()}.jpg`;
     const uploaded = await client.storage
       .from('group-avatars')
       .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
@@ -435,7 +500,7 @@ export const repository = {
     }
     if (bytes.byteLength > 10 * 1024 * 1024)
       throw new AppError('RECEIPT_TOO_LARGE', 'La imagen supera el límite de 10 MB.');
-    const path = `${userId}/${expenseId}/${crypto.randomUUID()}.jpg`;
+    const path = `${userId}/${expenseId}/${Crypto.randomUUID()}.jpg`;
     const { error } = await getSupabase()
       .storage.from('receipts')
       .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
@@ -528,6 +593,15 @@ export const repository = {
       'send-reminder',
       { claimId },
     );
+  },
+  requestPaymentCheck(claimId: string) {
+    return invoke<{
+      claimId: string;
+      expenseId: string;
+      requestedAt: string;
+      nextAllowedAt: string;
+      push: { sent: number; failed: number };
+    }>('request-payment-check', { claimId });
   },
   revokeClaim(claimId: string) {
     return invoke<{ claimId: string; status: 'cancelled'; cancelledAt: string }>('revoke-claim', {

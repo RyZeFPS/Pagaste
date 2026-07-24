@@ -67,7 +67,7 @@ serve(async (req) => {
   try {
     const { data: signed, error: signedError } = await admin.storage
       .from('receipts')
-      .createSignedUrl(receiptPath, 60);
+      .createSignedUrl(receiptPath, 120);
     if (signedError || !signed?.signedUrl)
       throw new ApiError('RECEIPT_UNAVAILABLE', 'No se pudo abrir el ticket.', 404);
     const scanned = await provider.scanReceipt({

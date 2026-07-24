@@ -55,13 +55,15 @@ export default function GroupsScreen() {
               Ten a mano a las personas con las que más compartes.
             </AppText>
           </View>
-          <AppButton
-            title="Nuevo"
-            variant="ghost"
-            size="sm"
-            leftIcon={<Plus color={palette.primary} size={18} strokeWidth={2.2} />}
-            onPress={() => router.push('/group/new')}
-          />
+          <View style={styles.headerActions}>
+            <AppButton
+              title="Nuevo"
+              variant="ghost"
+              size="sm"
+              leftIcon={<Plus color={palette.primary} size={18} strokeWidth={2.2} />}
+              onPress={() => router.push('/group/new')}
+            />
+          </View>
         </Animated.View>
 
         {query.isPending && query.data === undefined ? (
@@ -195,6 +197,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerCopy: { minWidth: 0, flex: 1, gap: spacing.xs },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   title: { letterSpacing: -0.7 },
   emptyCard: {
     paddingHorizontal: spacing.lg,

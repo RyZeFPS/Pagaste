@@ -35,11 +35,15 @@ describe('safe post-auth navigation', () => {
 
 describe('safe notification navigation', () => {
   const uuid = '018f86ec-f14c-7830-ba31-666def626eb2';
+  const publicClaimPath = `/c/${inviteToken}`;
 
   it.each([
     [`/expense/${uuid}/status`, `/expense/${uuid}/status`],
     [`/group/${uuid}`, `/group/${uuid}`],
     [invitePath, invitePath],
+    [publicClaimPath, publicClaimPath],
+    ['/activity', '/activity'],
+    ['/settings/notifications', '/settings/notifications'],
   ])('accepts the internal route %s', (route, expected) => {
     expect(getSafeNotificationRedirect(route)).toBe(expected);
   });
@@ -51,6 +55,8 @@ describe('safe notification navigation', () => {
     `/expense/not-a-uuid/status`,
     `/group/${uuid}?redirect=https://evil.example`,
     '/settings/account',
+    `/c/${'A'.repeat(42)}`,
+    `${publicClaimPath}?next=https://evil.example`,
     null,
     { route: `/group/${uuid}` },
   ])('rejects an unsafe notification route: %j', (route) => {
