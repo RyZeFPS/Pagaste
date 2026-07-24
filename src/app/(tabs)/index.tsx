@@ -203,16 +203,30 @@ export default function HomeScreen() {
             onPress={() => router.push('/(tabs)/profile')}
             style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
           >
-            <AppText color={palette.primary} style={styles.greeting}>
-              ¡Hola, {firstName}!
-            </AppText>
-            <BrandLogo
-              variant="horizontal"
-              width={146}
-              accessibilityLabel="Pagaste"
-              testID="home-brand-logo"
-              style={styles.brand}
-            />
+            <View
+              style={[
+                styles.identityMark,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                  shadowColor: palette.text,
+                },
+              ]}
+            >
+              <BrandLogo variant="mark" height={42} decorative />
+            </View>
+            <View style={styles.identityCopy}>
+              <AppText color={palette.primary} style={styles.greeting}>
+                ¡Hola, {firstName}!
+              </AppText>
+              <BrandLogo
+                variant="horizontal"
+                width={132}
+                accessibilityLabel="Pagaste"
+                testID="home-brand-logo"
+                style={styles.brand}
+              />
+            </View>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -475,14 +489,36 @@ const styles = StyleSheet.create({
   },
   identity: {
     flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  identityMark: {
+    width: 56,
+    height: 56,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.09,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   greeting: {
-    fontSize: 18,
-    lineHeight: 23,
+    fontSize: 17,
+    lineHeight: 21,
     fontWeight: '600',
   },
   brand: {
-    marginTop: 1,
+    marginTop: 2,
   },
   bellButton: {
     position: 'relative',
