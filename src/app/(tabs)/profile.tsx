@@ -23,27 +23,26 @@ import { pickProcessedProfileAvatar } from '@/lib/profile-avatar-image';
 import { repository } from '@/lib/repository';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
-import { useI18n } from '@/i18n';
+import { useI18n, type Locale } from '@/i18n';
 import { radii, spacing } from '@/theme';
-
-const localeLabels = {
-  es: 'Español',
-  ca: 'Català',
-  en: 'English',
-} as const;
 
 const enter = (delay: number) =>
   FadeInDown.duration(360).delay(delay).reduceMotion(ReduceMotion.System);
 
-function joinedLabel(createdAt: string | undefined, locale: keyof typeof localeLabels) {
-  if (!createdAt) return 'Desde hace poco';
+function joinedLabel(
+  createdAt: string | undefined,
+  intlLocale: string,
+  translate: ReturnType<typeof useI18n>['t'],
+) {
+  if (!createdAt) return translate('profile.recentlyJoined');
   const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return 'Desde hace poco';
-  const intlLocale = locale === 'ca' ? 'ca-ES' : locale === 'en' ? 'en-GB' : 'es-ES';
-  return `Desde ${new Intl.DateTimeFormat(intlLocale, {
-    month: 'long',
-    year: 'numeric',
-  }).format(date)}`;
+  if (Number.isNaN(date.getTime())) return translate('profile.recentlyJoined');
+  return translate('profile.joined', {
+    date: new Intl.DateTimeFormat(intlLocale, {
+      month: 'long',
+      year: 'numeric',
+    }).format(date),
+  });
 }
 
 function initials(name: string) {
@@ -61,8 +60,12 @@ export default function ProfileScreen() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
-  const { locale } = useI18n();
-  const displayName = auth.profile?.display_name || 'Tu perfil';
+  const { intlLocale, locale, t } = useI18n();
+  const localeLabels: Record<Locale, string> = {
+    es: t('language.spanish'),
+    en: t('language.english'),
+  };
+  const displayName = auth.profile?.display_name || t('profile.title');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string>();
   const reputation = useQuery({
@@ -79,7 +82,7 @@ export default function ProfileScreen() {
       setAvatarBusy(true);
       await auth.uploadProfileAvatar(uri);
     } catch {
-      setAvatarError('No hemos podido guardar la foto. Inténtalo de nuevo.');
+      setAvatarError(t('profile.photoSaveError'));
     } finally {
       setAvatarBusy(false);
     }
@@ -91,7 +94,7 @@ export default function ProfileScreen() {
     try {
       await auth.removeProfileAvatar();
     } catch {
-      setAvatarError('No hemos podido quitar la foto. Inténtalo de nuevo.');
+      setAvatarError(t('profile.photoRemoveError'));
     } finally {
       setAvatarBusy(false);
     }
@@ -103,15 +106,15 @@ export default function ProfileScreen() {
         <Animated.View entering={enter(0)} style={styles.pageHeader}>
           <View style={styles.pageHeaderCopy}>
             <AppText variant="display" style={styles.pageTitle}>
-              Perfil
+              {t('tabs.profile')}
             </AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Así te ven las personas con las que compartes gastos.
+              {t('profile.subtitle')}
             </AppText>
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Abrir ajustes"
+            accessibilityLabel={t('profile.openSettings')}
             hitSlop={6}
             onPress={() => router.push('/settings' as never)}
             style={({ pressed }) => [
@@ -138,7 +141,7 @@ export default function ProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  auth.profile?.avatar_path ? 'Cambiar foto de perfil' : 'Añadir foto de perfil'
+                  auth.profile?.avatar_path ? t('profile.changePhoto') : t('profile.addPhoto')
                 }
                 disabled={avatarBusy}
                 onPress={() => void chooseAvatar()}
@@ -174,7 +177,7 @@ export default function ProfileScreen() {
               <View style={styles.profileChips}>
                 <ProfileChip
                   icon={<CalendarDays color={palette.primary} size={16} strokeWidth={1.9} />}
-                  label={joinedLabel(auth.profile?.created_at, locale)}
+                  label={joinedLabel(auth.profile?.created_at, intlLocale, t)}
                 />
                 <ProfileChip
                   icon={<BadgeEuro color={palette.primary} size={16} strokeWidth={1.9} />}
@@ -189,7 +192,7 @@ export default function ProfileScreen() {
               {auth.profile?.avatar_path ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Quitar foto de perfil"
+                  accessibilityLabel={t('profile.removePhoto')}
                   disabled={avatarBusy}
                   onPress={() => void removeAvatar()}
                   style={({ pressed }) => [
@@ -208,8 +211,8 @@ export default function ProfileScreen() {
               ) : null}
 
               <AppButton
-                title="Editar perfil"
-                accessibilityLabel="Editar perfil y cuenta"
+                title={t('profile.edit')}
+                accessibilityLabel={t('profile.editA11y')}
                 size="md"
                 leftIcon={<Pencil color={palette.white} size={18} strokeWidth={2} />}
                 style={styles.editButton}
@@ -222,9 +225,9 @@ export default function ProfileScreen() {
         <Animated.View entering={enter(130)} style={styles.section}>
           <View style={styles.sectionHeading}>
             <View>
-              <AppText variant="sectionTitle">Fiabilidad</AppText>
+              <AppText variant="sectionTitle">{t('profile.reliability')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
-                Historial de pagos vinculados a tu cuenta
+                {t('profile.reliabilityBody')}
               </AppText>
             </View>
           </View>

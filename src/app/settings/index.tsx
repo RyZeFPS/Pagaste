@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
@@ -14,14 +15,8 @@ import { PageHeader, RequireAuth } from '@/components/app-shell';
 import { AppButton, AppText, Card, Divider, ScreenContainer } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
-import { useI18n } from '@/i18n';
+import { supportedLocales, toIntlLocale, useI18n, type Locale } from '@/i18n';
 import { radii, spacing } from '@/theme';
-
-const localeLabels = {
-  es: 'Español',
-  ca: 'Català',
-  en: 'English',
-} as const;
 
 const enter = (delay: number) =>
   FadeInDown.duration(330).delay(delay).reduceMotion(ReduceMotion.System);
@@ -38,37 +33,63 @@ function SettingsContent() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
+  const [languageSaving, setLanguageSaving] = useState<Locale>();
+  const [languageError, setLanguageError] = useState<string>();
+  const localeLabels: Record<Locale, string> = {
+    es: t('language.spanish'),
+    en: t('language.english'),
+  };
   const rows = [
     {
-      title: 'Cuenta y datos',
-      subtitle: 'Nombre, correo y exportación',
+      title: t('settings.accountTitle'),
+      subtitle: t('settings.accountSubtitle'),
       path: '/settings/account' as const,
       icon: UserRound,
     },
     {
-      title: 'Notificaciones',
-      subtitle: 'Avisos y recordatorios',
+      title: t('settings.notificationsTitle'),
+      subtitle: t('settings.notificationsSubtitle'),
       path: '/settings/notification-preferences' as const,
       icon: Bell,
     },
     {
-      title: 'Privacidad',
-      subtitle: 'Tus datos y seguridad',
+      title: t('settings.privacyTitle'),
+      subtitle: t('settings.privacySubtitle'),
       path: '/settings/privacy' as const,
       icon: LockKeyhole,
     },
     {
-      title: 'Plan de Pagaste',
-      subtitle: 'Suscripción y funciones',
+      title: t('settings.subscriptionMenuTitle'),
+      subtitle: t('settings.subscriptionSubtitle'),
       path: '/settings/subscription' as const,
       icon: CreditCard,
     },
   ];
+  const changeLocale = async (nextLocale: Locale) => {
+    if (nextLocale === locale || languageSaving) return;
+    const previousLocale = locale;
+    setLanguageError(undefined);
+    setLanguageSaving(nextLocale);
+    setLocale(nextLocale);
+    try {
+      if (auth.profile) {
+        await auth.saveProfile({
+          displayName: auth.profile.display_name,
+          locale: toIntlLocale(nextLocale),
+        });
+      }
+    } catch {
+      setLocale(previousLocale);
+      setLanguageError(t('settings.languageSaveError'));
+    } finally {
+      setLanguageSaving(undefined);
+    }
+  };
 
   return (
     <ScreenContainer>
-      <PageHeader title="Ajustes" subtitle="Cuenta, preferencias y privacidad" />
+      <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
 
       <Animated.View entering={enter(35)}>
         <Card variant="grouped">
@@ -102,9 +123,9 @@ function SettingsContent() {
 
       <Animated.View entering={enter(90)} style={styles.section}>
         <View style={styles.sectionHeading}>
-          <AppText variant="sectionTitle">Idioma</AppText>
+          <AppText variant="sectionTitle">{t('settings.languageTitle')}</AppText>
           <AppText variant="caption" color={palette.textSecondary}>
-            La aplicación está en {localeLabels[locale]}.
+            {t('settings.languageDescription', { language: localeLabels[locale] })}
           </AppText>
         </View>
         <Card padding="spacious" style={styles.languageCard}>
@@ -113,31 +134,40 @@ function SettingsContent() {
               <Languages color={palette.primary} size={20} strokeWidth={1.9} />
             </View>
             <View style={styles.settingsCopy}>
-              <AppText variant="label">Idioma de Pagaste</AppText>
+              <AppText variant="label">{t('settings.appLanguage')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
                 {localeLabels[locale]}
               </AppText>
             </View>
           </View>
           <View style={[styles.languages, { backgroundColor: palette.background }]}>
-            {(['es', 'ca', 'en'] as const).map((value) => (
+            {supportedLocales.map((value) => (
               <AppButton
                 key={value}
                 title={value.toUpperCase()}
                 size="sm"
                 variant={locale === value ? 'primary' : 'ghost'}
                 style={styles.languageButton}
-                accessibilityLabel={`Cambiar idioma a ${localeLabels[value]}`}
-                onPress={() => setLocale(value)}
+                accessibilityLabel={t('settings.changeLanguage', {
+                  language: localeLabels[value],
+                })}
+                loading={languageSaving === value}
+                disabled={Boolean(languageSaving)}
+                onPress={() => void changeLocale(value)}
               />
             ))}
           </View>
+          {languageError ? (
+            <AppText variant="caption" color={palette.danger}>
+              {languageError}
+            </AppText>
+          ) : null}
         </Card>
       </Animated.View>
 
       <Animated.View entering={enter(145)}>
         <AppButton
-          title="Cerrar sesión"
+          title={t('auth.logout')}
           variant="danger"
           fullWidth
           leftIcon={<LogOut color={palette.white} size={19} strokeWidth={2} />}

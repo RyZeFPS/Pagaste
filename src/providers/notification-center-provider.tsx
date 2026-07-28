@@ -28,6 +28,7 @@ import { repository } from '@/lib/repository';
 import { supabase } from '@/lib/supabase/client';
 import type { AppColors } from '@/theme';
 import { radii, spacing } from '@/theme';
+import { useI18n } from '@/i18n';
 
 type NotificationCenterValue = {
   unreadCount: number;
@@ -49,6 +50,7 @@ export function NotificationCenterProvider({
   palette,
 }: PropsWithChildren<{ userId?: string; palette: AppColors }>) {
   const queryClient = useQueryClient();
+  const { locale, t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [previewIds, setPreviewIds] = useState<string[]>([]);
   const notificationsKey = useMemo(() => ['app-notifications', userId] as const, [userId]);
@@ -150,17 +152,17 @@ export function NotificationCenterProvider({
       <BottomSheet
         visible={Boolean(userId) && visible}
         onClose={closePreview}
-        title="Notificaciones"
+        title={t('notifications.title')}
       >
         <View style={styles.sheetIntro}>
           <View style={styles.introCopy}>
             <Info color={palette.primary} size={18} />
             <AppText variant="bodySmall" color={palette.textSecondary} style={styles.flex}>
-              Aquí ves qué ha ocurrido. Abre el historial para consultar todas tus notificaciones.
+              {t('notifications.previewIntro')}
             </AppText>
           </View>
           <AppButton
-            title="Ver todas las notificaciones"
+            title={t('notifications.viewAll')}
             variant="secondary"
             size="sm"
             leftIcon={<BellRing color={palette.primary} size={17} />}
@@ -175,13 +177,13 @@ export function NotificationCenterProvider({
           <LoadingSkeleton height={84} />
         ) : !previewNotifications.length ? (
           <EmptyState
-            title="No tienes notificaciones"
-            body="Las nuevas solicitudes y avisos aparecerán aquí."
+            title={t('notifications.emptyTitle')}
+            body={t('notifications.previewEmptyBody')}
           />
         ) : (
           <View style={[styles.list, { borderColor: palette.border }]}>
             {previewNotifications.map((item, index) => {
-              const presentation = getNotificationPresentation(item);
+              const presentation = getNotificationPresentation(item, locale);
               return (
                 <Pressable
                   key={item.id}
@@ -204,7 +206,7 @@ export function NotificationCenterProvider({
                       {presentation.body}
                     </AppText>
                     <AppText color={palette.primary} style={styles.amount}>
-                      {formatNotificationMoney(item)}
+                      {formatNotificationMoney(item, locale)}
                     </AppText>
                   </View>
                   <ChevronRight color={palette.textMuted} size={19} />
@@ -218,7 +220,7 @@ export function NotificationCenterProvider({
           <View style={styles.seen}>
             <CheckCheck color={palette.success} size={17} />
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Estas notificaciones ya quedan marcadas como vistas.
+              {t('notifications.previewSeen')}
             </AppText>
           </View>
         ) : null}

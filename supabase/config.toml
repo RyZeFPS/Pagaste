@@ -254,21 +254,21 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.magic_link]
-subject = "Tu código para entrar en Pagaste"
+subject = "Pagaste · Acceso / Sign in"
 content_path = "./supabase/templates/magic_link.html"
 
 [auth.email.template.confirmation]
-subject = "Confirma tu correo de Pagaste"
+subject = "Pagaste · Confirma tu correo / Confirm your email"
 content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.recovery]
-subject = "Crea una contraseña nueva para Pagaste"
+subject = "Pagaste · Nueva contraseña / New password"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template
 [auth.email.notification.password_changed]
 enabled = true
-subject = "Tu contraseña de Pagaste ha cambiado"
+subject = "Pagaste · Contraseña actualizada / Password updated"
 content_path = "./supabase/templates/password_changed_notification.html"
 
 [auth.sms]
@@ -438,6 +438,9 @@ verify_jwt = true
 [functions.revoke-claim]
 verify_jwt = true
 
+[functions.regenerate-claim-link]
+verify_jwt = true
+
 [functions.send-push]
 verify_jwt = false
 
@@ -446,6 +449,15 @@ verify_jwt = true
 
 [functions.accept-invite]
 verify_jwt = true
+
+[functions.manage-expense-collaboration]
+verify_jwt = true
+
+[functions.get-public-expense-collaboration]
+verify_jwt = false
+
+[functions.submit-expense-collaboration]
+verify_jwt = false
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"

@@ -14,13 +14,114 @@ const normalizedCentsSchema = z
   .min(Number.MIN_SAFE_INTEGER)
   .max(Number.MAX_SAFE_INTEGER);
 const confidenceSchema = z.number().finite().min(0).max(1);
+export const receiptLineReviewThreshold = 0.78;
+
+export type ReceiptLineReviewState = 'correct' | 'review' | 'unknown';
+export type ReceiptCaptureQualityWarning = 'image_low_resolution' | 'image_unusual_aspect_ratio';
+
+type ReconciliationItem = Readonly<{
+  name: string;
+  lineTotalCents: Cents;
+  category?: string | null;
+}>;
+
+const commonExpensePattern =
+  /\b(?:gastos?\s+de\s+env[ií]o|env[ií]o|delivery|propina|servicio\s+a\s+domicilio|comisi[oó]n|suplemento|embalaje)\b/iu;
+
+export function receiptLineReviewState(
+  confidence: number | null | undefined,
+): ReceiptLineReviewState {
+  if (confidence === null || confidence === undefined || !Number.isFinite(confidence)) {
+    return 'unknown';
+  }
+  return confidence >= receiptLineReviewThreshold ? 'correct' : 'review';
+}
+
+export function isReceiptCommonExpense(item: ReconciliationItem): boolean {
+  return (
+    item.lineTotalCents > 0 && (item.category === 'common' || commonExpensePattern.test(item.name))
+  );
+}
+
+export function receiptCaptureQualityWarnings(
+  input: Readonly<{
+    width?: number | null;
+    height?: number | null;
+  }>,
+): ReceiptCaptureQualityWarning[] {
+  const width = input.width ?? 0;
+  const height = input.height ?? 0;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return [];
+
+  const warnings: ReceiptCaptureQualityWarning[] = [];
+  const shortEdge = Math.min(width, height);
+  const longEdge = Math.max(width, height);
+  if (shortEdge < 720 || width * height < 800_000) warnings.push('image_low_resolution');
+  if (longEdge / shortEdge < 1.08 || longEdge / shortEdge > 12) {
+    warnings.push('image_unusual_aspect_ratio');
+  }
+  return warnings;
+}
+
+export function reconcileReceiptAmounts(
+  items: readonly ReconciliationItem[],
+  totalCents: Cents,
+): Readonly<{
+  productsCents: Cents;
+  discountsCents: Cents;
+  commonExpensesCents: Cents;
+  detectedCents: Cents;
+  differenceCents: Cents;
+  duplicateIndexes: readonly number[];
+}> {
+  assertSafeCents(totalCents, 'Receipt total');
+  let productsCents = 0;
+  let discountsCents = 0;
+  let commonExpensesCents = 0;
+  const duplicateIndexes: number[] = [];
+  const seen = new Set<string>();
+
+  items.forEach((item, index) => {
+    assertSafeCents(item.lineTotalCents, `Receipt item ${index}`);
+    if (item.lineTotalCents < 0) {
+      discountsCents = sumCents([discountsCents, item.lineTotalCents], 'Receipt discounts total');
+    } else if (isReceiptCommonExpense(item)) {
+      commonExpensesCents = sumCents(
+        [commonExpensesCents, item.lineTotalCents],
+        'Receipt common expenses total',
+      );
+    } else {
+      productsCents = sumCents([productsCents, item.lineTotalCents], 'Receipt products total');
+    }
+
+    const duplicateKey = `${item.name
+      .normalize('NFKC')
+      .trim()
+      .toLocaleLowerCase('es-ES')}::${item.lineTotalCents}`;
+    if (seen.has(duplicateKey)) duplicateIndexes.push(index);
+    else seen.add(duplicateKey);
+  });
+
+  const detectedCents = sumCents(
+    [productsCents, discountsCents, commonExpensesCents],
+    'Receipt detected total',
+  );
+  return {
+    productsCents,
+    discountsCents,
+    commonExpensesCents,
+    detectedCents,
+    differenceCents: sumCents([totalCents, -detectedCents], 'Receipt difference'),
+    duplicateIndexes,
+  };
+}
 
 export const receiptScanItemSchema = z
   .object({
     name: z.string().min(1).max(200),
     quantity: z.number().finite().positive().max(10_000),
-    unitPriceCents: normalizedCentsSchema.nonnegative().nullable(),
-    lineTotalCents: normalizedCentsSchema.nonnegative(),
+    unitPriceCents: normalizedCentsSchema.nullable(),
+    lineTotalCents: normalizedCentsSchema,
     confidence: confidenceSchema,
   })
   .strict();
@@ -235,14 +336,13 @@ export function normalizeReceiptOcrResponse(
     }
     const lineTotalCents = pickAmount(item.lineTotalCents, item.lineTotal, locale, true);
     const unitPriceCents = pickAmount(item.unitPriceCents, item.unitPrice, locale, false);
-    if (
-      lineTotalCents === null ||
-      lineTotalCents < 0 ||
-      (unitPriceCents !== null && unitPriceCents < 0)
-    ) {
+    if (lineTotalCents === null) {
+      throw new DomainValidationError('invalid_ocr_amount', `OCR item ${index} needs an amount`);
+    }
+    if (unitPriceCents !== null && Math.sign(unitPriceCents) !== Math.sign(lineTotalCents)) {
       throw new DomainValidationError(
         'invalid_ocr_amount',
-        `OCR item ${index} cannot contain a negative price`,
+        `OCR item ${index} unit and line amounts must use the same sign`,
       );
     }
     return {

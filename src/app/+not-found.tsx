@@ -1,13 +1,15 @@
 import { useRouter } from 'expo-router';
 import { AppButton, EmptyState, ScreenContainer } from '@/components/ui';
+import { useI18n } from '@/i18n';
 export default function NotFoundScreen() {
   const router = useRouter();
+  const { t } = useI18n();
   return (
     <ScreenContainer publicPage>
       <EmptyState
-        title="Esta página no existe"
-        body="Comprueba el enlace o vuelve al inicio."
-        action={<AppButton title="Volver al inicio" onPress={() => router.replace('/')} />}
+        title={t('notFound.title')}
+        body={t('notFound.body')}
+        action={<AppButton title={t('notFound.action')} onPress={() => router.replace('/')} />}
       />
     </ScreenContainer>
   );

@@ -564,13 +564,28 @@ async function handleFunction(route: Route, state: MockSupabase): Promise<void> 
 
   if (functionName === 'create-claim-links') {
     const input = requestBody(route);
-    const claimInput = (input.claims as JsonRecord[])[0];
+    const debtor = state.participants.find((participant) => !participant.is_payer);
+    const creditor = state.participants.find((participant) => participant.is_payer);
+    if (!debtor || !creditor) {
+      await json(
+        route,
+        {
+          data: null,
+          error: { code: 'NO_SETTLEMENTS_REQUIRED', message: 'No settlement required' },
+        },
+        409,
+      );
+      return;
+    }
+    const amountCents = state.allocations
+      .filter((allocation) => allocation.participant_id === debtor.id)
+      .reduce((total, allocation) => total + allocation.amount_cents, 0);
     const claim: Claim = {
       id: ids.claim,
       expense_id: String(input.expenseId),
-      debtor_participant_id: String(claimInput.debtorParticipantId),
-      creditor_participant_id: ids.payer,
-      amount_cents: Number(claimInput.amountCents),
+      debtor_participant_id: debtor.id,
+      creditor_participant_id: creditor.id,
+      amount_cents: amountCents,
       status: 'pending',
       sent_at: NOW,
       viewed_at: null,
@@ -587,6 +602,7 @@ async function handleFunction(route: Route, state: MockSupabase): Promise<void> 
           {
             claimId: ids.claim,
             debtorParticipantId: claim.debtor_participant_id,
+            creditorParticipantId: claim.creditor_participant_id,
             amountCents: claim.amount_cents,
             url: 'http://127.0.0.1:8081/c/e2e-public-token',
           },

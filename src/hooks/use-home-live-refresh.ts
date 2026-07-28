@@ -24,7 +24,7 @@ export function useFinanceLiveRefresh(userId?: string) {
         if (disposed) return;
         void Promise.all([
           cache.invalidateQueries({ queryKey: ['expenses'], exact: true }),
-          cache.invalidateQueries({ queryKey: ['claims'], exact: true }),
+          cache.invalidateQueries({ queryKey: ['claims'] }),
           cache.invalidateQueries({ queryKey: ['expense'] }),
           cache.invalidateQueries({ queryKey: ['group'] }),
           cache.invalidateQueries({ queryKey: ['groups'], exact: true }),

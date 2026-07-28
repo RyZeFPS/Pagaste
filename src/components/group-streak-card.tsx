@@ -5,9 +5,10 @@ import { ThreeDIcon } from '@/components/three-d-icon';
 import { AppButton, AppText, Card, LoadingSkeleton, ProgressBar } from '@/components/ui';
 import type { GroupStreakCard as GroupStreakData } from '@/lib/models';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
-function deadlineLabel(value: string) {
+function deadlineLabel(value: string, intlLocale: string, todayLabel: string) {
   const deadline = new Date(value);
   if (Number.isNaN(deadline.valueOf())) return null;
   const now = new Date();
@@ -15,19 +16,20 @@ function deadlineLabel(value: string) {
     deadline.getFullYear() === now.getFullYear() &&
     deadline.getMonth() === now.getMonth() &&
     deadline.getDate() === now.getDate();
-  const formatted = new Intl.DateTimeFormat('es-ES', {
+  const formatted = new Intl.DateTimeFormat(intlLocale, {
     ...(sameDay ? {} : { day: 'numeric', month: 'short' as const }),
     hour: '2-digit',
     minute: '2-digit',
   }).format(deadline);
-  return sameDay ? `Hoy, ${formatted}` : formatted;
+  return sameDay ? `${todayLabel}, ${formatted}` : formatted;
 }
 
 export function GroupStreakSkeleton() {
+  const { t } = useI18n();
   return (
     <Card
       accessibilityRole="progressbar"
-      accessibilityLabel="Cargando la racha del grupo"
+      accessibilityLabel={t('groups.streakLoading')}
       accessibilityState={{ busy: true }}
       padding="spacious"
       style={styles.card}
@@ -59,21 +61,27 @@ export function GroupStreakCard({
   onRetry?: () => void;
 }) {
   const palette = useAppColors();
+  const { intlLocale, t } = useI18n();
 
   if (error || !streak) {
     return (
       <Card variant="outlined" padding="spacious" style={styles.card}>
         <View style={styles.header}>
-          <ThreeDIcon name="groupStreak" size={70} accessibilityLabel="Racha del grupo" />
+          <ThreeDIcon name="groupStreak" size={70} accessibilityLabel={t('groups.streakIcon')} />
           <View style={styles.flex}>
-            <AppText variant="sectionTitle">Racha del grupo</AppText>
+            <AppText variant="sectionTitle">{t('groups.streakTitle')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              No hemos podido calcularla ahora mismo.
+              {t('groups.streakError')}
             </AppText>
           </View>
         </View>
         {onRetry ? (
-          <AppButton title="Volver a intentar" size="sm" variant="outline" onPress={onRetry} />
+          <AppButton
+            title={t('groups.streakRetry')}
+            size="sm"
+            variant="outline"
+            onPress={onRetry}
+          />
         ) : null}
       </Card>
     );
@@ -81,34 +89,45 @@ export function GroupStreakCard({
 
   const isNew = streak.completedRounds === 0;
   const rate = streak.within24Rate ?? 0;
-  const deadline = streak.nextDeadline ? deadlineLabel(streak.nextDeadline) : null;
+  const formattedRate = new Intl.NumberFormat(intlLocale, {
+    style: 'percent',
+    maximumFractionDigits: 0,
+  }).format(rate / 100);
+  const deadline = streak.nextDeadline
+    ? deadlineLabel(streak.nextDeadline, intlLocale, t('common.today'))
+    : null;
   const heading = streak.hasOverdue
-    ? 'La racha vuelve a empezar'
+    ? t('groups.streakRestart')
     : streak.currentStreak > 0
-      ? `${streak.currentStreak} ${streak.currentStreak === 1 ? 'ronda seguida' : 'rondas seguidas'}`
+      ? t(streak.currentStreak === 1 ? 'groups.streakRoundSingular' : 'groups.streakRoundPlural', {
+          count: streak.currentStreak,
+        })
       : isNew
-        ? 'La primera racha empieza aquí'
-        : 'Preparados para la siguiente';
+        ? t('groups.streakFirst')
+        : t('groups.streakReady');
   const body = streak.hasOverdue
-    ? 'Algún cobro superó las 24 horas. La próxima ronda puntual inicia una nueva racha.'
+    ? t('groups.streakOverdueBody')
     : isNew
-      ? 'Cuando todos paguéis una ronda en menos de 24 horas, el contador subirá.'
-      : 'Cada gasto que el grupo complete en menos de 24 horas mantiene el fuego.';
+      ? t('groups.streakFirstBody')
+      : t('groups.streakBody');
 
   return (
     <Card
-      accessibilityLabel={`Racha del grupo: ${streak.currentStreak}. Récord: ${streak.longestStreak}.`}
+      accessibilityLabel={t('groups.streakAccessibility', {
+        current: streak.currentStreak,
+        longest: streak.longestStreak,
+      })}
       padding="spacious"
       style={[styles.card, { borderColor: palette.warning, borderWidth: StyleSheet.hairlineWidth }]}
     >
       <View style={styles.header}>
         <View style={[styles.artwork, { backgroundColor: palette.warningLight }]}>
-          <ThreeDIcon name="groupStreak" size={82} accessibilityLabel="Racha del grupo" />
+          <ThreeDIcon name="groupStreak" size={82} accessibilityLabel={t('groups.streakIcon')} />
         </View>
         <View style={styles.flex}>
           <View style={[styles.eyebrow, { backgroundColor: palette.warningLight }]}>
             <AppText color={palette.warningInk} style={styles.eyebrowText}>
-              RACHA DEL GRUPO
+              {t('groups.streakEyebrow')}
             </AppText>
           </View>
           <AppText variant="screenTitle" numberOfLines={2}>
@@ -124,33 +143,33 @@ export function GroupStreakCard({
         <View style={[styles.notice, { backgroundColor: palette.warningLight }]}>
           <RotateCcw color={palette.warningInk} size={18} strokeWidth={2} />
           <AppText variant="bodySmall" color={palette.warningInk} style={styles.flex}>
-            La siguiente ronda puntual reactivará la racha.
+            {t('groups.streakReactivate')}
           </AppText>
         </View>
       ) : deadline ? (
         <View style={[styles.notice, { backgroundColor: palette.primaryLight }]}>
           <Clock3 color={palette.primary} size={18} strokeWidth={2} />
           <AppText variant="bodySmall" color={palette.primary} style={styles.flex}>
-            Próximo límite: {deadline}
+            {t('groups.streakDeadline', { deadline })}
           </AppText>
         </View>
       ) : null}
 
       <View style={styles.metrics}>
         <Metric
-          label="Racha actual"
+          label={t('groups.streakCurrent')}
           value={String(streak.currentStreak)}
           accent={palette.warningInk}
         />
         <Metric
-          label="Récord"
+          label={t('groups.streakRecord')}
           value={String(streak.longestStreak)}
           accent={palette.primary}
           icon={<Trophy color={palette.primary} size={14} strokeWidth={2} />}
         />
         <Metric
-          label="En 24 h"
-          value={streak.within24Rate === null ? '—' : `${rate} %`}
+          label={t('groups.streakWithin24')}
+          value={streak.within24Rate === null ? '—' : formattedRate}
           accent={palette.successInk}
         />
       </View>
@@ -159,8 +178,15 @@ export function GroupStreakCard({
         <View style={styles.progress}>
           <ProgressBar value={rate / 100} color={palette.success} />
           <AppText variant="caption" color={palette.textMuted}>
-            {streak.successfulRounds} de {streak.completedRounds}{' '}
-            {streak.completedRounds === 1 ? 'ronda completada' : 'rondas completadas'} a tiempo
+            {t(
+              streak.completedRounds === 1
+                ? 'groups.streakProgressSingular'
+                : 'groups.streakProgressPlural',
+              {
+                successful: streak.successfulRounds,
+                total: streak.completedRounds,
+              },
+            )}
           </AppText>
         </View>
       ) : null}

@@ -6,3 +6,6 @@ playwright-report
 test-results
 pnpm-lock.yaml
 supabase/.temp
+# Supabase email templates contain Go template expressions that HTML parsers
+# treat as malformed attributes even though Supabase renders them correctly.
+supabase/templates/*.html

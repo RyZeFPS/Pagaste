@@ -2,6 +2,7 @@ import { forwardRef, useId, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { AppText } from '@/components/ui';
+import { useI18n } from '@/i18n';
 import { useAppColors } from '@/providers/app-providers';
 import { radii, spacing, touchTarget } from '@/theme';
 
@@ -16,6 +17,7 @@ export const PasswordField = forwardRef<TextInput, PasswordFieldProps>(function 
   ref,
 ) {
   const palette = useAppColors();
+  const { t } = useI18n();
   const [focused, setFocused] = useState(false);
   const [visible, setVisible] = useState(false);
   const generatedId = useId().replace(/:/gu, '');
@@ -65,7 +67,7 @@ export const PasswordField = forwardRef<TextInput, PasswordFieldProps>(function 
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          accessibilityLabel={visible ? t('auth.hidePassword') : t('auth.showPassword')}
           accessibilityState={{ expanded: visible }}
           hitSlop={6}
           onPress={() => setVisible((current) => !current)}

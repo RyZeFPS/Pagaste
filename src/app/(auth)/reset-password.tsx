@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,9 +12,10 @@ import { useAppColors } from '@/providers/app-providers';
 import {
   AUTH_PASSWORD_MIN_LENGTH,
   authErrorMessage,
+  createAuthValidationSchemas,
   passwordChecks,
-  resetPasswordSchema,
 } from '@/lib/auth-validation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 type Form = { password: string; passwordConfirmation: string };
@@ -27,6 +28,8 @@ export default function ResetPasswordScreen() {
   const code = Array.isArray(params.code) ? params.code[0] : params.code;
   const invalidCode = Boolean(code && code.length > 1_024);
   const palette = useAppColors();
+  const { locale, t } = useI18n();
+  const { resetPasswordSchema } = useMemo(() => createAuthValidationSchemas(locale), [locale]);
   const [serverError, setServerError] = useState<string>();
   const [completed, setCompleted] = useState(false);
   const [callbackState, setCallbackState] = useState<'idle' | 'loading' | 'error'>(
@@ -70,11 +73,11 @@ export default function ResetPasswordScreen() {
     return (
       <ScreenContainer publicPage contentContainerStyle={styles.screen}>
         <EmptyState
-          title="Este enlace no es válido"
-          body="El enlace ha caducado, ya se ha utilizado o se abrió en otro dispositivo. Solicita uno nuevo desde este navegador."
+          title={t('auth.invalidLinkTitle')}
+          body={t('auth.invalidCallbackBody')}
           action={
             <AppButton
-              title="Solicitar otro enlace"
+              title={t('auth.requestNewLink')}
               onPress={() => router.replace('/(auth)/forgot-password')}
             />
           }
@@ -100,7 +103,7 @@ export default function ResetPasswordScreen() {
       await auth.updatePassword(parsed.data.password);
       setCompleted(true);
     } catch (error) {
-      setServerError(authErrorMessage(error, 'password-update'));
+      setServerError(authErrorMessage(error, 'password-update', locale));
     }
   });
 
@@ -116,13 +119,13 @@ export default function ResetPasswordScreen() {
             <Check color={palette.successInk} size={34} strokeWidth={3} />
           </View>
           <AppText accessibilityRole="header" variant="screenTitle" style={styles.center}>
-            Contraseña actualizada
+            {t('auth.passwordUpdatedTitle')}
           </AppText>
           <AppText color={palette.textSecondary} style={styles.center}>
-            Ya puedes acceder a Pagaste con tu correo y esta contraseña.
+            {t('auth.passwordUpdatedBody')}
           </AppText>
           <AppButton
-            title="Continuar"
+            title={t('common.continue')}
             size="lg"
             fullWidth
             onPress={() =>
@@ -138,11 +141,11 @@ export default function ResetPasswordScreen() {
     return (
       <ScreenContainer publicPage contentContainerStyle={styles.screen}>
         <EmptyState
-          title="Este enlace no es válido"
-          body="Solicita un enlace nuevo para cambiar tu contraseña de forma segura."
+          title={t('auth.invalidLinkTitle')}
+          body={t('auth.invalidRecoveryBody')}
           action={
             <AppButton
-              title="Solicitar otro enlace"
+              title={t('auth.requestNewLink')}
               onPress={() => router.replace('/(auth)/forgot-password')}
             />
           }
@@ -154,7 +157,7 @@ export default function ResetPasswordScreen() {
   return (
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
       <View style={styles.content}>
-        <PageHeader title="Nueva contraseña" />
+        <PageHeader title={t('auth.newPasswordHeader')} />
         <View
           accessible={false}
           importantForAccessibility="no"
@@ -171,11 +174,9 @@ export default function ResetPasswordScreen() {
         <Card padding="spacious" style={styles.card}>
           <View style={styles.heading}>
             <AppText accessibilityRole="header" variant="screenTitle">
-              Protege tu cuenta
+              {t('auth.resetTitle')}
             </AppText>
-            <AppText color={palette.textSecondary}>
-              Crea una contraseña única que no utilices en otros servicios.
-            </AppText>
+            <AppText color={palette.textSecondary}>{t('auth.resetBody')}</AppText>
           </View>
 
           <Controller
@@ -185,8 +186,8 @@ export default function ResetPasswordScreen() {
               <PasswordField
                 ref={ref}
                 testID="reset-password"
-                label="Contraseña nueva"
-                placeholder="Crea una contraseña"
+                label={t('auth.newPassword')}
+                placeholder={t('auth.passwordCreatePlaceholder')}
                 textContentType="newPassword"
                 autoComplete="new-password"
                 enterKeyHint="next"
@@ -203,16 +204,19 @@ export default function ResetPasswordScreen() {
           />
 
           <View
-            accessibilityLabel={`Requisitos de contraseña: ${Object.values(checks).filter(Boolean).length} de 4 cumplidos`}
+            accessibilityLabel={t('auth.passwordRequirements', {
+              passed: Object.values(checks).filter(Boolean).length,
+              total: 4,
+            })}
             style={[styles.requirements, { backgroundColor: palette.background }]}
           >
             <Requirement
               passed={checks.length}
-              label={`${AUTH_PASSWORD_MIN_LENGTH} caracteres como mínimo`}
+              label={t('auth.passwordRequirementMin', { count: AUTH_PASSWORD_MIN_LENGTH })}
             />
-            <Requirement passed={checks.lowercase} label="Una letra minúscula" />
-            <Requirement passed={checks.uppercase} label="Una letra mayúscula" />
-            <Requirement passed={checks.number} label="Un número" />
+            <Requirement passed={checks.lowercase} label={t('auth.passwordRequirementLowercase')} />
+            <Requirement passed={checks.uppercase} label={t('auth.passwordRequirementUppercase')} />
+            <Requirement passed={checks.number} label={t('auth.passwordRequirementNumber')} />
           </View>
 
           <Controller
@@ -222,8 +226,8 @@ export default function ResetPasswordScreen() {
               <PasswordField
                 ref={ref}
                 testID="reset-password-confirmation"
-                label="Repite la contraseña"
-                placeholder="Repite tu contraseña"
+                label={t('auth.passwordRepeat')}
+                placeholder={t('auth.passwordRepeatPlaceholder')}
                 textContentType="newPassword"
                 autoComplete="new-password"
                 enterKeyHint="done"
@@ -253,7 +257,7 @@ export default function ResetPasswordScreen() {
 
           <AppButton
             testID="reset-submit"
-            title="Guardar contraseña"
+            title={t('auth.savePassword')}
             size="lg"
             fullWidth
             loading={isSubmitting}
@@ -267,10 +271,11 @@ export default function ResetPasswordScreen() {
 
 function Requirement({ passed, label }: { passed: boolean; label: string }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   return (
     <View
       accessible
-      accessibilityLabel={`${passed ? 'Cumplido' : 'Pendiente'}: ${label}`}
+      accessibilityLabel={`${t(passed ? 'auth.requirementMet' : 'auth.requirementPending')}: ${label}`}
       style={styles.requirement}
     >
       {passed ? (

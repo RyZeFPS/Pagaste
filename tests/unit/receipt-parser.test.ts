@@ -18,6 +18,8 @@ describe('receipt text parser', () => {
     expect(result.merchantName).toBe('Mercadona');
     expect(result.merchantAddress).toBe('C/ MAYOR, 12');
     expect(result.totalCents).toBe(350);
+    expect(result.subtotalCents).toBe(390);
+    expect(result.discountCents).toBe(-40);
     expect(result.items).toEqual([
       expect.objectContaining({
         name: 'AGUA MINERAL',
@@ -35,9 +37,7 @@ describe('receipt text parser', () => {
         lineTotalCents: -40,
       }),
     ]);
-    expect(result.warnings).not.toContain(
-      'La suma de productos no coincide con el total. Revisa las líneas detectadas.',
-    );
+    expect(result.warnings).not.toContain('items_do_not_match_total');
   });
 
   it('warns instead of inventing missing product lines', () => {
@@ -53,23 +53,37 @@ describe('receipt text parser', () => {
         lineTotalCents: 1_200,
       }),
     ]);
-    expect(result.warnings).toContain(
-      'No se han distinguido los productos. Revisa y sustituye la línea total.',
+    expect(result.warnings).toContain('products_not_detected');
+    expect(result.warnings).toContain('low_confidence_lines:1');
+  });
+
+  it('localizes the editable fallback line for an English recipient', () => {
+    const result = parseReceiptLines(
+      [
+        { text: 'CENTRAL CAFE', confidence: 84 },
+        { text: 'TOTAL 12.00 EUR', confidence: 91 },
+      ],
+      { locale: 'en-GB' },
     );
+
+    expect(result.items[0]?.name).toBe('Receipt total — review items');
+    expect(result.warnings).toContain('products_not_detected');
   });
 
   it('falls back to a likely total but makes the uncertainty visible', () => {
-    const result = parseReceiptLines([
-      { text: 'BAR CENTRAL', confidence: 80 },
-      { text: 'CAFE 1,50', confidence: 85 },
-      { text: 'BOCADILLO 4,50', confidence: 86 },
-      { text: '6,00', confidence: 70 },
-    ]);
+    const result = parseReceiptLines(
+      [
+        { text: 'BAR CENTRAL', confidence: 80 },
+        { text: 'CAFE 1,50', confidence: 85 },
+        { text: 'BOCADILLO 4,50', confidence: 86 },
+        { text: '6,00', confidence: 70 },
+      ],
+      { qualityWarnings: ['image_too_dark'] },
+    );
 
     expect(result.totalCents).toBe(600);
-    expect(result.warnings).toContain(
-      'No se ha leído claramente la palabra TOTAL; confirma el importe.',
-    );
+    expect(result.warnings).toContain('total_label_not_found');
+    expect(result.warnings).toContain('image_too_dark');
   });
 
   it('rejects empty or amount-less OCR output', () => {

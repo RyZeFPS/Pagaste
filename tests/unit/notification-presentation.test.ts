@@ -50,6 +50,11 @@ describe('notification presentation', () => {
       detailRoute: '/activity',
     });
     expect(formatNotificationMoney(item)).toContain('8,50');
+    expect(getNotificationPresentation(item, 'en')).toMatchObject({
+      title: 'David has requested a payment',
+      body: 'Cena · Monos',
+    });
+    expect(formatNotificationMoney(item, 'en')).toBe('€8.50');
   });
 
   it('routes a bank-check request to the receiver status screen', () => {
@@ -57,6 +62,9 @@ describe('notification presentation', () => {
     expect(getNotificationPresentation(item)).toMatchObject({
       title: 'Ferran te pide revisar el ingreso',
       detailRoute: '/expense/018f86ec-f14c-7830-ba31-666def626eb2/status',
+    });
+    expect(getNotificationPresentation(item, 'en')).toMatchObject({
+      title: 'Ferran asks you to review the incoming payment',
     });
   });
 });

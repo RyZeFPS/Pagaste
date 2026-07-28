@@ -6,6 +6,7 @@ import { BrandLogo } from '@/components/brand-logo';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
 import { getSafeInviteRedirect } from '@/lib/navigation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 export default function VerifyScreen() {
@@ -20,6 +21,7 @@ export default function VerifyScreen() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { t } = useI18n();
 
   if (mode === 'reset' && auth.session && auth.passwordRecovery) {
     return <Redirect href="/(auth)/reset-password" />;
@@ -39,13 +41,13 @@ export default function VerifyScreen() {
         <View style={styles.brand} accessibilityRole="header">
           <BrandLogo variant="horizontal" width={200} testID="pagaste-brand-logo" />
           <AppText variant="caption" color={palette.textSecondary}>
-            Escanea, reparte y cobra.
+            {t('app.tagline')}
           </AppText>
         </View>
 
         <View
           accessibilityRole="image"
-          accessibilityLabel="Correo enviado correctamente"
+          accessibilityLabel={t('auth.emailSentA11y')}
           style={[styles.illustration, { backgroundColor: palette.primaryLight }]}
         >
           <View style={[styles.mailHalo, { borderColor: palette.primary }]} />
@@ -57,12 +59,10 @@ export default function VerifyScreen() {
         <Card padding="spacious" style={styles.card}>
           <View accessibilityLiveRegion="polite" style={styles.heading}>
             <AppText accessibilityRole="header" variant="screenTitle" style={styles.center}>
-              {isReset ? 'Revisa tu correo' : 'Confirma tu correo'}
+              {t(isReset ? 'auth.resetCheckTitle' : 'auth.confirmEmailTitle')}
             </AppText>
             <AppText color={palette.textSecondary} style={styles.center}>
-              {isReset
-                ? 'Si existe una cuenta con ese correo, recibirás un enlace para crear una contraseña nueva.'
-                : 'Te hemos enviado un enlace para confirmar que el correo te pertenece.'}
+              {t(isReset ? 'auth.resetNeutralBody' : 'auth.confirmEmailBody')}
             </AppText>
             {email ? (
               <AppText variant="label" color={palette.primary} style={styles.center}>
@@ -74,16 +74,16 @@ export default function VerifyScreen() {
           <View style={[styles.securityNote, { backgroundColor: palette.successLight }]}>
             <ShieldCheck color={palette.successInk} size={18} />
             <AppText variant="caption" color={palette.successInk} style={styles.flex}>
-              El enlace es personal. No lo compartas con nadie y ábrelo en este dispositivo.
+              {t('auth.personalLink')}
             </AppText>
           </View>
 
           <AppText variant="caption" color={palette.textSecondary} style={styles.center}>
-            Puede tardar unos minutos. Revisa también la carpeta de correo no deseado.
+            {t('auth.emailDelay')}
           </AppText>
 
           <AppButton
-            title="Volver a iniciar sesión"
+            title={t('auth.backToLogin')}
             variant="outline"
             size="lg"
             fullWidth

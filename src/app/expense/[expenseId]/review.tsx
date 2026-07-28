@@ -21,6 +21,8 @@ import { successHaptic } from '@/lib/haptics';
 import { useAppColors } from '@/providers/app-providers';
 import { spacing } from '@/theme';
 import { sumCents } from '@/domain/money';
+import { calculateSettlementTransfers } from '@/domain/contributions';
+import { useI18n } from '@/i18n';
 
 export default function ReviewScreen() {
   return (
@@ -34,6 +36,7 @@ function ReviewContent() {
   const { expenseId } = useLocalSearchParams<{ expenseId: string }>();
   const router = useRouter();
   const palette = useAppColors();
+  const { t } = useI18n();
   const [error, setError] = useState<string>();
   const query = useQuery({
     queryKey: ['expense', expenseId],
@@ -48,61 +51,73 @@ function ReviewContent() {
       );
     return map;
   }, [query.data?.allocations]);
+  const paidByParticipant = useMemo(() => {
+    const paid = new Map<string, number>();
+    for (const contribution of query.data?.contributions ?? []) {
+      paid.set(
+        contribution.participant_id,
+        sumCents([paid.get(contribution.participant_id) ?? 0, contribution.amount_cents]),
+      );
+    }
+    if (!paid.size && query.data) {
+      const payer = query.data.participants.find((participant) => participant.is_payer);
+      if (payer) paid.set(payer.id, query.data.total_cents);
+    }
+    return paid;
+  }, [query.data]);
+  const settlements = useMemo(() => {
+    if (!query.data) return [];
+    try {
+      return calculateSettlementTransfers(
+        query.data.participants.map((participant) => ({
+          participantId: participant.id,
+          shareCents: totals.get(participant.id) ?? 0,
+          paidCents: paidByParticipant.get(participant.id) ?? 0,
+          sortOrder: participant.sort_order,
+        })),
+      );
+    } catch {
+      return [];
+    }
+  }, [paidByParticipant, query.data, totals]);
 
   const send = useMutation({
     mutationFn: async () => {
-      if (!query.data) throw new Error('No se ha podido cargar el reparto.');
-      const payer = query.data.participants.find((participant) => participant.is_payer);
-      if (!payer) throw new Error('Falta indicar quién pagó.');
-      const requests = query.data.participants
-        .filter(
-          (participant) => participant.id !== payer.id && (totals.get(participant.id) ?? 0) > 0,
-        )
-        .map((participant) => ({
-          debtorParticipantId: participant.id,
-          amountCents: totals.get(participant.id) ?? 0,
-        }));
-      if (!requests.length) throw new Error('No hay ninguna cantidad a recuperar.');
-      const recoverable = sumCents(requests.map((claim) => claim.amountCents));
-      await repository.updateExpense(expenseId, {
-        recoverable_cents: recoverable,
-        own_share_cents: sumCents([query.data.total_cents, -recoverable]),
-      });
-      const links = await repository.createClaimLinks(expenseId, requests);
+      if (!query.data) throw new Error(t('review.noDataError'));
+      const links = await repository.createClaimLinks(expenseId);
       await saveSmallJson(`claim-links:${expenseId}`, links.claims);
       return links;
     },
-    onSuccess: async () => {
+    onSuccess: async (links) => {
       await successHaptic();
-      router.replace(`/expense/${expenseId}/share`);
+      if (links.claims.length) {
+        router.replace(`/expense/${expenseId}/share`);
+      } else {
+        router.replace('/(tabs)/activity');
+      }
     },
-    onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : 'No se han podido crear las solicitudes.'),
+    onError: (cause) => setError(cause instanceof Error ? cause.message : t('review.createError')),
   });
 
   if (query.isPending && !query.data) return <ScreenLoadingSkeleton variant="review" />;
   if (query.isError || !query.data)
     return (
       <ScreenContainer>
-        <ErrorState
-          body="No hemos podido cargar el reparto."
-          onRetry={() => void query.refetch()}
-        />
+        <ErrorState body={t('review.loadError')} onRetry={() => void query.refetch()} />
       </ScreenContainer>
     );
 
   const payer = query.data.participants.find((participant) => participant.is_payer);
   const assigned = sumCents([...totals.values()]);
   const ownShare = payer ? (totals.get(payer.id) ?? 0) : 0;
-  const recoverable = sumCents([assigned, -ownShare]);
-  const debtors = query.data.participants.filter(
-    (participant) => !participant.is_payer && (totals.get(participant.id) ?? 0) > 0,
-  );
-  const valid = assigned === query.data.total_cents && recoverable > 0;
+  const contributed = sumCents([...paidByParticipant.values()]);
+  const recoverable = sumCents(settlements.map((settlement) => settlement.amountCents));
+  const debtorCount = new Set(settlements.map((settlement) => settlement.debtorParticipantId)).size;
+  const valid = assigned === query.data.total_cents && contributed === query.data.total_cents;
 
   return (
     <ScreenContainer contentContainerStyle={styles.screenContent}>
-      <PageHeader title="Revisar cobros" />
+      <PageHeader title={t('review.title')} />
 
       <Card style={styles.summaryCard}>
         <View style={styles.summaryHeading}>
@@ -119,9 +134,9 @@ function ReviewContent() {
             />
           </View>
           <View style={styles.flex}>
-            <AppText variant="heading">Todo listo para enviar</AppText>
+            <AppText variant="heading">{t('review.readyTitle')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Comprueba una última vez quién paga cada parte.
+              {t('review.readyBody')}
             </AppText>
           </View>
         </View>
@@ -133,7 +148,7 @@ function ReviewContent() {
         >
           <View style={styles.metricBlock}>
             <AppText variant="caption" color={palette.textSecondary}>
-              Total
+              {t('review.total')}
             </AppText>
             <CurrencyAmount
               cents={query.data.total_cents}
@@ -143,13 +158,13 @@ function ReviewContent() {
           </View>
           <View style={[styles.metricBlock, styles.metricBorder, { borderColor: palette.divider }]}>
             <AppText variant="caption" color={palette.textSecondary}>
-              Tu parte
+              {t('review.yourShare')}
             </AppText>
             <CurrencyAmount cents={ownShare} currency={query.data.currency} variant="label" />
           </View>
           <View style={styles.metricBlock}>
             <AppText variant="caption" color={palette.textSecondary}>
-              A recuperar
+              {t('review.toRecover')}
             </AppText>
             <CurrencyAmount
               cents={recoverable}
@@ -165,20 +180,36 @@ function ReviewContent() {
         />
         {!valid ? (
           <AppText variant="bodySmall" color={palette.dangerInk}>
-            El reparto no coincide con el total o no hay nada que recuperar.
+            {t('review.invalid')}
           </AppText>
         ) : null}
       </Card>
 
       <View style={styles.sectionHeading}>
-        <AppText variant="heading">Solicitudes</AppText>
+        <AppText variant="heading">{t('review.requests')}</AppText>
         <AppText variant="bodySmall" color={palette.textSecondary}>
-          {debtors.length} {debtors.length === 1 ? 'persona' : 'personas'}
+          {debtorCount === 1
+            ? t('review.peopleOne')
+            : t('review.peopleMany', { count: debtorCount })}
         </AppText>
       </View>
 
       <Card variant="grouped">
-        {debtors.map((participant, index) => {
+        {!settlements.length ? (
+          <View style={styles.emptyTransfers}>
+            <AppText variant="bodySmall" color={palette.textSecondary}>
+              {t('review.noTransfers')}
+            </AppText>
+          </View>
+        ) : null}
+        {settlements.map((settlement, index) => {
+          const participant = query.data.participants.find(
+            (person) => person.id === settlement.debtorParticipantId,
+          );
+          const creditor = query.data.participants.find(
+            (person) => person.id === settlement.creditorParticipantId,
+          );
+          if (!participant || !creditor) return null;
           const participantItems = query.data.items.filter((item) =>
             query.data.allocations.some(
               (allocation) =>
@@ -188,22 +219,25 @@ function ReviewContent() {
             ),
           );
           return (
-            <View key={participant.id}>
+            <View key={`${participant.id}:${creditor.id}`}>
               <View style={styles.personRow}>
                 <Avatar name={participant.display_name} uri={participant.avatar_path} size={48} />
                 <View style={styles.flex}>
                   <AppText variant="label">{participant.display_name}</AppText>
                   <AppText variant="bodySmall" color={palette.textSecondary} numberOfLines={1}>
-                    {participantItems.map((item) => item.name).join(', ') || 'Parte del gasto'}
+                    {t('review.owesTo', { name: creditor.display_name })}
+                    {participantItems.length
+                      ? ` · ${participantItems.map((item) => item.name).join(', ')}`
+                      : ''}
                   </AppText>
                 </View>
                 <CurrencyAmount
-                  cents={totals.get(participant.id) ?? 0}
+                  cents={settlement.amountCents}
                   currency={query.data.currency}
                   variant="heading"
                 />
               </View>
-              {index < debtors.length - 1 ? (
+              {index < settlements.length - 1 ? (
                 <View style={[styles.personDivider, { backgroundColor: palette.divider }]} />
               ) : null}
             </View>
@@ -214,7 +248,7 @@ function ReviewContent() {
       {error ? <AppText color={palette.dangerInk}>{error}</AppText> : null}
       <AppButton
         testID="send-claims"
-        title="Crear solicitudes"
+        title={settlements.length ? t('review.create') : t('review.finish')}
         variant="success"
         size="lg"
         leftIcon={<Send color={palette.white} size={21} />}
@@ -223,8 +257,7 @@ function ReviewContent() {
         onPress={() => send.mutate()}
       />
       <AppText variant="caption" color={palette.textSecondary} style={styles.legalText}>
-        Cada persona recibirá un enlace privado distinto. Pagaste no mueve dinero: te ayuda a
-        repartir y cobrar.
+        {t('review.legal')}
       </AppText>
     </ScreenContainer>
   );
@@ -259,5 +292,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   personDivider: { height: 1, marginLeft: 80 },
+  emptyTransfers: { padding: spacing.lg },
   legalText: { textAlign: 'center', paddingHorizontal: spacing.lg },
 });

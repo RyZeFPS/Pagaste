@@ -80,6 +80,8 @@ const publicClaimSourceSchema = z
       .pipe(z.string().regex(/^[A-Z]{3}$/)),
     amountCents: centsSchema.positive(),
     status: publicClaimStatusSchema,
+    recipientLocale: z.string().trim().min(2).max(35).optional(),
+    linkExpiresAt: occurredAtSchema.nullable().optional(),
     items: z.array(publicClaimItemSchema).max(250),
   })
   .strip();

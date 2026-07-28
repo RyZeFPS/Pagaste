@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,10 +12,11 @@ import { useAppColors } from '@/providers/app-providers';
 import {
   AUTH_PASSWORD_MIN_LENGTH,
   authErrorMessage,
+  createAuthValidationSchemas,
   passwordChecks,
-  signUpSchema,
 } from '@/lib/auth-validation';
 import { getSafeInviteRedirect } from '@/lib/navigation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 type Form = {
@@ -28,6 +29,8 @@ export default function SignUpScreen() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { locale, t } = useI18n();
+  const { signUpSchema } = useMemo(() => createAuthValidationSchemas(locale), [locale]);
   const { next: requestedNext } = useLocalSearchParams<{ next?: string | string[] }>();
   const next = getSafeInviteRedirect(requestedNext);
   const [serverError, setServerError] = useState<string>();
@@ -85,7 +88,7 @@ export default function SignUpScreen() {
         next ? { pathname: '/(auth)/onboarding', params: { next } } : '/(auth)/onboarding',
       );
     } catch (error) {
-      setServerError(authErrorMessage(error, 'signup'));
+      setServerError(authErrorMessage(error, 'signup', locale));
     }
   });
 
@@ -95,7 +98,7 @@ export default function SignUpScreen() {
         <View style={styles.brand} accessibilityRole="header">
           <BrandLogo variant="horizontal" width={200} testID="pagaste-brand-logo" />
           <AppText variant="caption" color={palette.textSecondary}>
-            Escanea, reparte y cobra.
+            {t('app.tagline')}
           </AppText>
         </View>
 
@@ -106,11 +109,9 @@ export default function SignUpScreen() {
             </View>
             <View style={styles.headingCopy}>
               <AppText accessibilityRole="header" variant="screenTitle">
-                Crea tu cuenta
+                {t('auth.signUpTitle')}
               </AppText>
-              <AppText color={palette.textSecondary}>
-                Utiliza un correo al que tengas acceso y una contraseña única.
-              </AppText>
+              <AppText color={palette.textSecondary}>{t('auth.signUpBody')}</AppText>
             </View>
           </View>
 
@@ -121,8 +122,8 @@ export default function SignUpScreen() {
               <AppInput
                 ref={ref}
                 testID="signup-email"
-                label="Correo electrónico"
-                placeholder="tu@correo.com"
+                label={t('auth.email')}
+                placeholder={t('auth.emailPlaceholder')}
                 keyboardType="email-address"
                 textContentType="emailAddress"
                 autoComplete="email"
@@ -150,8 +151,8 @@ export default function SignUpScreen() {
               <PasswordField
                 ref={ref}
                 testID="signup-password"
-                label="Contraseña"
-                placeholder="Crea una contraseña"
+                label={t('auth.password')}
+                placeholder={t('auth.passwordCreatePlaceholder')}
                 textContentType="newPassword"
                 autoComplete="new-password"
                 enterKeyHint="next"
@@ -168,16 +169,28 @@ export default function SignUpScreen() {
           />
 
           <View
-            accessibilityLabel={`Requisitos de contraseña: ${Object.values(checks).filter(Boolean).length} de 4 cumplidos`}
+            accessibilityLabel={t('auth.passwordRequirements', {
+              passed: Object.values(checks).filter(Boolean).length,
+              total: 4,
+            })}
             style={[styles.requirements, { backgroundColor: palette.background }]}
           >
             <PasswordRequirement
               passed={checks.length}
-              label={`${AUTH_PASSWORD_MIN_LENGTH} caracteres como mínimo`}
+              label={t('auth.passwordRequirementMin', { count: AUTH_PASSWORD_MIN_LENGTH })}
             />
-            <PasswordRequirement passed={checks.lowercase} label="Una letra minúscula" />
-            <PasswordRequirement passed={checks.uppercase} label="Una letra mayúscula" />
-            <PasswordRequirement passed={checks.number} label="Un número" />
+            <PasswordRequirement
+              passed={checks.lowercase}
+              label={t('auth.passwordRequirementLowercase')}
+            />
+            <PasswordRequirement
+              passed={checks.uppercase}
+              label={t('auth.passwordRequirementUppercase')}
+            />
+            <PasswordRequirement
+              passed={checks.number}
+              label={t('auth.passwordRequirementNumber')}
+            />
           </View>
 
           <Controller
@@ -187,8 +200,8 @@ export default function SignUpScreen() {
               <PasswordField
                 ref={ref}
                 testID="signup-password-confirmation"
-                label="Repite la contraseña"
-                placeholder="Repite tu contraseña"
+                label={t('auth.passwordRepeat')}
+                placeholder={t('auth.passwordRepeatPlaceholder')}
                 textContentType="newPassword"
                 autoComplete="new-password"
                 enterKeyHint="done"
@@ -218,7 +231,7 @@ export default function SignUpScreen() {
 
           <AppButton
             testID="signup-submit"
-            title="Crear cuenta"
+            title={t('auth.createAccount')}
             size="lg"
             fullWidth
             loading={isSubmitting}
@@ -229,18 +242,18 @@ export default function SignUpScreen() {
           <View style={styles.legalCopy}>
             <ShieldCheck color={palette.textMuted} size={17} />
             <AppText variant="caption" color={palette.textSecondary} style={styles.flex}>
-              Al crear la cuenta aceptas las condiciones de uso y la política de privacidad.
+              {t('auth.signUpLegal')}
             </AppText>
           </View>
           <View style={styles.legalLinks}>
             <AppButton
-              title="Condiciones"
+              title={t('auth.termsShort')}
               variant="ghost"
               size="sm"
               onPress={() => router.push('/settings/terms')}
             />
             <AppButton
-              title="Privacidad"
+              title={t('auth.privacyShort')}
               variant="ghost"
               size="sm"
               onPress={() => router.push('/settings/privacy')}
@@ -249,9 +262,9 @@ export default function SignUpScreen() {
         </Card>
 
         <View style={styles.signInRow}>
-          <AppText color={palette.textSecondary}>¿Ya tienes cuenta?</AppText>
+          <AppText color={palette.textSecondary}>{t('auth.haveAccount')}</AppText>
           <AppButton
-            title="Iniciar sesión"
+            title={t('auth.signIn')}
             variant="outline"
             size="sm"
             onPress={() =>
@@ -268,10 +281,11 @@ export default function SignUpScreen() {
 
 function PasswordRequirement({ passed, label }: { passed: boolean; label: string }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   return (
     <View
       accessible
-      accessibilityLabel={`${passed ? 'Cumplido' : 'Pendiente'}: ${label}`}
+      accessibilityLabel={`${t(passed ? 'auth.requirementMet' : 'auth.requirementPending')}: ${label}`}
       style={styles.requirement}
     >
       {passed ? (

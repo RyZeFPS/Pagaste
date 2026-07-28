@@ -1,4 +1,5 @@
 import { resolveMerchantBrand } from '../../src/lib/merchant-brand';
+import { isReceiptCommonExpense, receiptLineReviewThreshold } from '../../src/domain/ocr';
 import type { ReceiptScanItem, ReceiptScanResult } from '../../src/types/ocr';
 
 export type OcrLine = Readonly<{
@@ -23,9 +24,9 @@ const NON_PRODUCT =
 const DISCOUNT_LABEL = /\b(?:descuento|dto|dcto|promoci[oó]n|ahorro|cup[oó]n)\b/iu;
 const ADDRESS_LABEL =
   /^(?:c(?:alle\b|\/)|av(?:enida|da)?\b|av\.|plaza\b|paseo\b|carretera\b|ctra\.|ronda\b)/iu;
-const HEADER_LABEL = /\b(?:producto|descripci[oó]n|art[ií]culo|cantidad|cant\.?|precio|importe)\b/iu;
-const MONEY_PATTERN =
-  /(?:[-−]\s*)?(?:€\s*)?\d{1,7}(?:(?:[.\s]\d{3})+)?[,.]\d{2}\s*(?:€|eur)?/giu;
+const HEADER_LABEL =
+  /\b(?:producto|descripci[oó]n|art[ií]culo|cantidad|cant\.?|precio|importe)\b/iu;
+const MONEY_PATTERN = /(?:[-−]\s*)?(?:€\s*)?\d{1,7}(?:(?:[.\s]\d{3})+)?[,.]\d{2}\s*(?:€|eur)?/giu;
 
 type AmountToken = Readonly<{
   raw: string;
@@ -152,14 +153,13 @@ function quantityAndName(
 ): { quantity: number; name: string; unitPriceCents: number | null } {
   let source = line;
   const quantityMatch = /^\s*(\d{1,3}(?:[,.]\d{1,3})?)\s*(?:x|×|\*)\s*/iu.exec(source);
-  const quantity = quantityMatch
-    ? Number(quantityMatch[1]?.replace(',', '.'))
-    : 1;
+  const quantity = quantityMatch ? Number(quantityMatch[1]?.replace(',', '.')) : 1;
   if (quantityMatch) source = source.slice(quantityMatch[0].length);
 
   for (const amount of [...amounts].reverse()) {
     const localIndex = source.lastIndexOf(amount.raw);
-    if (localIndex >= 0) source = `${source.slice(0, localIndex)} ${source.slice(localIndex + amount.raw.length)}`;
+    if (localIndex >= 0)
+      source = `${source.slice(0, localIndex)} ${source.slice(localIndex + amount.raw.length)}`;
   }
   const name = source
     .replace(/^\s*(?:\d{4,14}|[A-Z]?\d{3,14}[A-Z]?)\s+/iu, '')
@@ -172,7 +172,9 @@ function quantityAndName(
   const finalAmount = amounts.at(-1)?.cents ?? 0;
   const possibleUnit = amounts.length > 1 ? amounts.at(-2)?.cents : undefined;
   const unitPriceCents =
-    possibleUnit !== undefined && quantity > 0 && Math.abs(possibleUnit * quantity - finalAmount) <= 2
+    possibleUnit !== undefined &&
+    quantity > 0 &&
+    Math.abs(possibleUnit * quantity - finalAmount) <= 2
       ? possibleUnit
       : quantity > 0 && Number.isInteger(finalAmount / quantity)
         ? finalAmount / quantity
@@ -211,9 +213,7 @@ function productsFrom(lines: readonly OcrLine[], totalIndex: number): ReceiptSca
           : isDiscount
             ? -Math.abs(parsed.unitPriceCents)
             : Math.abs(parsed.unitPriceCents),
-      lineTotalCents: isDiscount
-        ? -Math.abs(finalAmount.cents)
-        : Math.abs(finalAmount.cents),
+      lineTotalCents: isDiscount ? -Math.abs(finalAmount.cents) : Math.abs(finalAmount.cents),
       confidence: normalizedConfidence(line.confidence),
     });
   }
@@ -232,25 +232,32 @@ function productsFrom(lines: readonly OcrLine[], totalIndex: number): ReceiptSca
 
 export function parseReceiptLines(
   rawLines: readonly OcrLine[],
-  options: Readonly<{ currencyHint?: string; pageConfidence?: number }> = {},
+  options: Readonly<{
+    currencyHint?: string;
+    locale?: string;
+    pageConfidence?: number;
+    qualityWarnings?: readonly string[];
+  }> = {},
 ): ReceiptScanResult {
   const lines = meaningfulLines(rawLines);
   if (!lines.length) throw new ReceiptParseError('OCR_TEXT_EMPTY');
   const total = findTotal(lines);
   let items = productsFrom(lines, total.index);
-  const warnings: string[] = [];
+  const warnings: string[] = [...(options.qualityWarnings ?? [])];
 
   if (!items.length) {
     items = [
       {
-        name: 'Total del ticket — revisar productos',
+        name: options.locale?.toLowerCase().startsWith('en')
+          ? 'Receipt total — review items'
+          : 'Total del ticket — revisar productos',
         quantity: 1,
         unitPriceCents: total.cents,
         lineTotalCents: total.cents,
         confidence: 0.25,
       },
     ];
-    warnings.push('No se han distinguido los productos. Revisa y sustituye la línea total.');
+    warnings.push('products_not_detected');
   }
 
   const itemTotal = items.reduce((sum, item) => sum + item.lineTotalCents, 0);
@@ -269,14 +276,19 @@ export function parseReceiptLines(
               : last.unitPriceCents + difference / last.quantity,
         },
       ];
-      warnings.push('Se ha corregido un redondeo de céntimos en la última línea.');
+      warnings.push('rounding_adjusted');
     }
   } else if (difference !== 0) {
-    warnings.push('La suma de productos no coincide con el total. Revisa las líneas detectadas.');
+    warnings.push('items_do_not_match_total');
   }
   if (!total.explicit) {
-    warnings.push('No se ha leído claramente la palabra TOTAL; confirma el importe.');
+    warnings.push('total_label_not_found');
   }
+
+  const lowConfidenceLines = items.filter(
+    (item) => item.confidence < receiptLineReviewThreshold,
+  ).length;
+  if (lowConfidenceLines > 0) warnings.push(`low_confidence_lines:${lowConfidenceLines}`);
 
   const averageLineConfidence =
     items.reduce((sum, item) => sum + item.confidence, 0) / Math.max(items.length, 1);
@@ -285,19 +297,28 @@ export function parseReceiptLines(
     items.reduce((sum, item) => sum + item.lineTotalCents, 0) === total.cents ? 0.12 : -0.18;
   const confidence = clamp(pageConfidence * 0.55 + averageLineConfidence * 0.45 + reconciled);
   if (confidence < 0.62) {
-    warnings.push('La imagen tiene baja confianza de lectura. Comprueba nombres e importes.');
+    warnings.push('page_low_confidence');
   }
 
   const currency = (options.currencyHint ?? 'EUR').trim().toUpperCase();
+  const subtotalCents = items
+    .filter((item) => item.lineTotalCents > 0 && !isReceiptCommonExpense(item))
+    .reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const discountCents = items
+    .filter((item) => item.lineTotalCents < 0)
+    .reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const tipCents = items
+    .filter((item) => item.lineTotalCents > 0 && /\bpropina\b/iu.test(item.name))
+    .reduce((sum, item) => sum + item.lineTotalCents, 0);
   return {
     merchantName: merchantFrom(lines),
     merchantAddress: addressFrom(lines),
     occurredAt: null,
     currency: /^[A-Z]{3}$/u.test(currency) ? currency : 'EUR',
-    subtotalCents: null,
+    subtotalCents: subtotalCents || null,
     taxCents: null,
-    tipCents: null,
-    discountCents: null,
+    tipCents: tipCents || null,
+    discountCents: discountCents || null,
     totalCents: total.cents,
     confidence,
     items,

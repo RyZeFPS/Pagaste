@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Camera, Trash2 } from 'lucide-react-native';
 import { AppButton, AppText, Avatar, BottomSheet } from '@/components/ui';
+import { useI18n } from '@/i18n';
 import { useAppColors } from '@/providers/app-providers';
 import { radii, spacing } from '@/theme';
 
@@ -21,8 +22,9 @@ export function GroupAvatarPicker({
   onRemove?: () => void;
 }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   const [menuVisible, setMenuVisible] = useState(false);
-  const changeLabel = uri ? 'Editar foto del grupo' : 'Añadir foto del grupo';
+  const changeLabel = uri ? t('groups.avatarEdit') : t('groups.avatarAdd');
 
   const pickPhoto = () => {
     setMenuVisible(false);
@@ -40,7 +42,7 @@ export function GroupAvatarPicker({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={changeLabel}
-          accessibilityHint="Abre las opciones de la foto del grupo"
+          accessibilityHint={t('groups.avatarHint')}
           accessibilityState={{ busy, disabled: busy }}
           disabled={busy}
           onPress={() => setMenuVisible(true)}
@@ -69,21 +71,21 @@ export function GroupAvatarPicker({
       <BottomSheet
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
-        title="Foto del grupo"
+        title={t('groups.avatarTitle')}
       >
         <View style={styles.sheetActions}>
           <AppText variant="bodySmall" color={palette.textSecondary}>
-            Elige una foto que ayude a reconocer el grupo.
+            {t('groups.avatarBody')}
           </AppText>
           <AppButton
-            title={uri ? 'Cambiar foto' : 'Añadir foto'}
+            title={uri ? t('groups.avatarChange') : t('groups.avatarAdd')}
             fullWidth
             leftIcon={<Camera color={palette.white} size={19} strokeWidth={2} />}
             onPress={pickPhoto}
           />
           {uri && onRemove ? (
             <AppButton
-              title="Quitar foto"
+              title={t('groups.avatarRemove')}
               variant="danger"
               fullWidth
               leftIcon={<Trash2 color={palette.white} size={18} strokeWidth={2} />}

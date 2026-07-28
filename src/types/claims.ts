@@ -33,6 +33,8 @@ export interface PublicClaimDto {
   currency: CurrencyCode;
   amountCents: Cents;
   status: PublicClaimStatus;
+  recipientLocale?: string;
+  linkExpiresAt?: string | null;
   items: readonly PublicClaimItemDto[];
   canDispute: boolean;
 }

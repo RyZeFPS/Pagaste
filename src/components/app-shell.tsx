@@ -6,10 +6,12 @@ import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
 import { AppText, ErrorState, IconButton } from '@/components/ui';
 import { AppBootSkeleton } from '@/components/loading-skeletons';
+import { useI18n } from '@/i18n';
 import { spacing } from '@/theme';
 
 export function RequireAuth({ children }: PropsWithChildren) {
   const auth = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
   const segments = useSegments();
   useEffect(() => {
@@ -19,13 +21,7 @@ export function RequireAuth({ children }: PropsWithChildren) {
   }, [auth.configured, auth.loading, auth.profile?.onboarding_completed, auth.session, router]);
   if (auth.loading)
     return <AppBootSkeleton showTabBar={(segments[0] as string | undefined) === '(tabs)'} />;
-  if (!auth.configured)
-    return (
-      <ErrorState
-        title="Falta configurar Pagaste"
-        body="Añade las variables públicas de Supabase para conectar la aplicación."
-      />
-    );
+  if (!auth.configured) return <ErrorState title={t('config.title')} body={t('config.body')} />;
   if (!auth.session || !auth.profile?.onboarding_completed) return null;
   return children;
 }
@@ -43,12 +39,13 @@ export function PageHeader({
 }) {
   const router = useRouter();
   const palette = useAppColors();
+  const { t } = useI18n();
   return (
     <View style={styles.header}>
       <View style={styles.side}>
         {back ? (
           <IconButton
-            label="Volver"
+            label={t('common.back')}
             variant="plain"
             icon={<ChevronLeft color={palette.textPrimary} size={24} strokeWidth={2} />}
             onPress={() => router.back()}

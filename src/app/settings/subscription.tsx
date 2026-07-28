@@ -3,19 +3,21 @@ import { StyleSheet, View } from 'react-native';
 import { AppButton, AppText, Card, Divider, ScreenContainer } from '@/components/ui';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 export default function SubscriptionScreen() {
   const palette = useAppColors();
+  const { t } = useI18n();
   const features = [
-    'Más escaneos inteligentes',
-    'Recordatorios automáticos con consentimiento',
-    'Exportaciones avanzadas',
+    t('subscription.moreScans'),
+    t('subscription.reminders'),
+    t('subscription.exports'),
   ];
   return (
     <RequireAuth>
       <ScreenContainer>
-        <PageHeader title="Pagaste Plus" />
+        <PageHeader title={t('settings.subscriptionTitle')} />
 
         <Card
           variant="flat"
@@ -29,18 +31,15 @@ export default function SubscriptionScreen() {
             <View style={styles.flex}>
               <View style={styles.planTitleRow}>
                 <AppText variant="screenTitle" color={palette.primary}>
-                  Plan Gratis
+                  {t('subscription.freePlan')}
                 </AppText>
                 <View style={[styles.badge, { backgroundColor: palette.surface }]}>
                   <AppText variant="caption" color={palette.primary}>
-                    Plan actual
+                    {t('subscription.current')}
                   </AppText>
                 </View>
               </View>
-              <AppText color={palette.textPrimary}>
-                Tu plan actual incluye 3 escaneos inteligentes por periodo y gastos manuales sin
-                coste.
-              </AppText>
+              <AppText color={palette.textPrimary}>{t('subscription.freeBody')}</AppText>
             </View>
           </View>
           <View style={[styles.allowance, { backgroundColor: palette.surface }]}>
@@ -48,9 +47,9 @@ export default function SubscriptionScreen() {
               3
             </AppText>
             <View style={styles.flex}>
-              <AppText variant="label">Escaneos inteligentes</AppText>
+              <AppText variant="label">{t('subscription.scans')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
-                incluidos por periodo
+                {t('subscription.included')}
               </AppText>
             </View>
           </View>
@@ -62,9 +61,9 @@ export default function SubscriptionScreen() {
               <Sparkles color={palette.successInk} size={26} strokeWidth={2} />
             </View>
             <View style={styles.flex}>
-              <AppText variant="screenTitle">Plus · Próximamente</AppText>
+              <AppText variant="screenTitle">{t('subscription.plusTitle')}</AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Más herramientas para recuperar tu dinero con menos esfuerzo.
+                {t('subscription.plusBody')}
               </AppText>
             </View>
           </View>
@@ -81,7 +80,7 @@ export default function SubscriptionScreen() {
               </View>
             ))}
           </View>
-          <AppButton title="Avisarme cuando esté disponible" size="lg" fullWidth disabled />
+          <AppButton title={t('subscription.notifyMe')} size="lg" fullWidth disabled />
         </Card>
       </ScreenContainer>
     </RequireAuth>

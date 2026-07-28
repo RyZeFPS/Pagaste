@@ -7,6 +7,7 @@ const inputSchema = z
   .object({
     expenseId: z.string().uuid(),
     receiptPath: z.string().trim().min(10).max(700).optional(),
+    persistResult: z.boolean().default(true),
     locale: z.string().trim().min(2).max(35).default('es-ES'),
     currencyHint: z
       .string()
@@ -39,7 +40,7 @@ serve(async (req) => {
   if (!receiptPath.startsWith(prefix) || !/\.(jpe?g|png|webp)$/iu.test(receiptPath)) {
     throw new ApiError('INVALID_RECEIPT_PATH', 'La ruta del ticket no es válida.');
   }
-  if (receiptPath !== expense.receipt_path) {
+  if (input.persistResult && receiptPath !== expense.receipt_path) {
     const { error } = await client
       .from('expenses')
       .update({ receipt_path: receiptPath })
@@ -62,7 +63,9 @@ serve(async (req) => {
     .select('id')
     .single();
   if (jobError || !job) throw fromDatabaseError(jobError, 'SCAN_JOB_CREATE_FAILED');
-  await admin.from('expenses').update({ scan_status: 'processing' }).eq('id', input.expenseId);
+  if (input.persistResult) {
+    await admin.from('expenses').update({ scan_status: 'processing' }).eq('id', input.expenseId);
+  }
 
   try {
     const { data: signed, error: signedError } = await admin.storage
@@ -75,27 +78,55 @@ serve(async (req) => {
       locale: input.locale,
       currencyHint: input.currencyHint,
     });
-    const itemTotal = scanned.items.reduce((sum, item) => sum + BigInt(item.lineTotalCents), 0n);
+    const { data: learnedCorrections } = await admin.rpc('suggest_anonymous_ocr_corrections', {
+      p_ocr_texts: scanned.items.map((item) => item.name),
+    });
+    const correctionMap =
+      learnedCorrections &&
+      typeof learnedCorrections === 'object' &&
+      !Array.isArray(learnedCorrections)
+        ? (learnedCorrections as Record<string, unknown>)
+        : {};
+    const correctedItems = scanned.items.map((item) => {
+      const suggestion = correctionMap[item.name.trim().toLocaleLowerCase()];
+      return typeof suggestion === 'string' && suggestion.trim()
+        ? { ...item, name: suggestion.trim() }
+        : item;
+    });
+    const itemTotal = correctedItems.reduce((sum, item) => sum + BigInt(item.lineTotalCents), 0n);
     const warnings =
       itemTotal === BigInt(scanned.totalCents)
         ? scanned.warnings
-        : [...scanned.warnings.slice(0, 29), 'La suma de productos no coincide con el total.'];
-    const result = { ...scanned, warnings };
-    const { error: applyError } = await admin.rpc('apply_receipt_scan_result', {
-      p_job_id: job.id,
-      p_expense_id: input.expenseId,
-      p_result: result,
-    });
-    if (applyError) throw fromDatabaseError(applyError, 'SCAN_RESULT_SAVE_FAILED');
+        : [...scanned.warnings.slice(0, 29), 'items_do_not_match_total'];
+    const result = { ...scanned, items: correctedItems, warnings };
+    if (input.persistResult) {
+      const { error: applyError } = await admin.rpc('apply_receipt_scan_result', {
+        p_job_id: job.id,
+        p_expense_id: input.expenseId,
+        p_result: result,
+      });
+      if (applyError) throw fromDatabaseError(applyError, 'SCAN_RESULT_SAVE_FAILED');
+    } else {
+      const { error: jobCompleteError } = await admin
+        .from('receipt_scan_jobs')
+        .update({
+          status: 'completed',
+          confidence: result.confidence,
+          warnings: result.warnings,
+          completed_at: new Date().toISOString(),
+          error_code: null,
+        })
+        .eq('id', job.id)
+        .eq('expense_id', input.expenseId);
+      if (jobCompleteError) {
+        throw fromDatabaseError(jobCompleteError, 'SCAN_JOB_COMPLETE_FAILED');
+      }
+    }
     return ok(req, {
       jobId: job.id,
       provider: provider.name,
       status: 'completed' as const,
-      confidence: result.confidence,
-      warnings: result.warnings,
-      merchantName: result.merchantName,
-      currency: result.currency,
-      totalCents: result.totalCents,
+      ...result,
       items: result.items.map((item) => ({ ...item, category: null })),
     });
   } catch (error) {
@@ -105,13 +136,18 @@ serve(async (req) => {
         : error instanceof z.ZodError
           ? 'OCR_RESPONSE_INVALID'
           : 'OCR_FAILED';
-    await Promise.all([
-      admin
-        .from('receipt_scan_jobs')
-        .update({ status: 'failed', error_code: errorCode, completed_at: new Date().toISOString() })
-        .eq('id', job.id),
-      admin.from('expenses').update({ scan_status: 'failed' }).eq('id', input.expenseId),
-    ]);
+    const jobFailure = admin
+      .from('receipt_scan_jobs')
+      .update({ status: 'failed', error_code: errorCode, completed_at: new Date().toISOString() })
+      .eq('id', job.id);
+    await Promise.all(
+      input.persistResult
+        ? [
+            jobFailure,
+            admin.from('expenses').update({ scan_status: 'failed' }).eq('id', input.expenseId),
+          ]
+        : [jobFailure],
+    );
     if (error instanceof ApiError) throw error;
     if (error instanceof z.ZodError)
       throw new ApiError('OCR_RESPONSE_INVALID', 'El OCR devolvió datos no válidos.', 502);

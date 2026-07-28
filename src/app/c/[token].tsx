@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
@@ -29,20 +29,24 @@ import { ScreenLoadingSkeleton } from '@/components/loading-skeletons';
 import { repository } from '@/lib/repository';
 import { lightHaptic } from '@/lib/haptics';
 import { useAppColors } from '@/providers/app-providers';
-import { useI18n } from '@/i18n';
+import { normalizeLocale, useI18n } from '@/i18n';
 import { spacing } from '@/theme';
 
 type DisputeReason =
   'did_not_consume' | 'incorrect_amount' | 'already_paid' | 'unknown_expense' | 'other';
 
 export default function PublicClaimScreen() {
-  const { token } = useLocalSearchParams<{ token: string }>();
+  const { token, lang } = useLocalSearchParams<{ token: string; lang?: string }>();
   const palette = useAppColors();
-  const { formatMoney, formatDate, t } = useI18n();
+  const { formatMoney, formatDate, setLocale, t } = useI18n();
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [reason, setReason] = useState<DisputeReason>('incorrect_amount');
   const [message, setMessage] = useState('');
   const [feedback, setFeedback] = useState<string>();
+
+  useEffect(() => {
+    if (lang) setLocale(normalizeLocale(lang));
+  }, [lang, setLocale]);
 
   const query = useQuery({
     queryKey: ['public-claim', token],
@@ -50,25 +54,27 @@ export default function PublicClaimScreen() {
     retry: 1,
   });
 
+  useEffect(() => {
+    if (!lang && query.data?.recipientLocale)
+      setLocale(normalizeLocale(query.data.recipientLocale));
+  }, [lang, query.data?.recipientLocale, setLocale]);
+
   const dispute = useMutation({
     mutationFn: () => repository.disputeClaim(token, reason, message.trim() || undefined),
     onSuccess: async () => {
       setDisputeOpen(false);
-      setFeedback('Hemos avisado para que revise el reparto.');
+      setFeedback(t('claim.reviewSent'));
       await lightHaptic();
       await query.refetch();
     },
-    onError: () => setFeedback('No hemos podido enviar la revisión. Inténtalo de nuevo.'),
+    onError: () => setFeedback(t('claim.reviewError')),
   });
 
   if (query.isPending && !query.data) return <ScreenLoadingSkeleton variant="publicClaim" />;
   if (query.isError || !query.data) {
     return (
       <ScreenContainer publicPage>
-        <ErrorState
-          title="Este enlace ya no está disponible"
-          body="Puede haber caducado, haberse revocado o no ser correcto."
-        />
+        <ErrorState title={t('claim.invalidTitle')} body={t('claim.invalidBody')} />
       </ScreenContainer>
     );
   }
@@ -78,23 +84,23 @@ export default function PublicClaimScreen() {
   const statusPresentation =
     claim.status === 'received'
       ? {
-          title: `${claim.creditorDisplayName} lo ha marcado como recibido`,
-          body: 'El cobro está cerrado. No tienes que hacer nada más.',
+          title: t('claim.receivedTitle', { name: claim.creditorDisplayName }),
+          body: t('claim.receivedBody'),
           backgroundColor: palette.successLight,
           color: palette.successInk,
           icon: <CheckCircle2 color={palette.successInk} size={25} />,
         }
       : claim.status === 'disputed'
         ? {
-            title: 'Reparto en revisión',
-            body: `${claim.creditorDisplayName} ha recibido tu aviso. Espera a que revise el importe antes de pagar.`,
+            title: t('claim.disputedTitle'),
+            body: t('claim.disputedBody', { name: claim.creditorDisplayName }),
             backgroundColor: palette.warningLight,
             color: palette.warningInk,
             icon: <TriangleAlert color={palette.warningInk} size={25} />,
           }
         : {
-            title: 'Solicitud cancelada',
-            body: 'Este cobro ya no está activo y no tienes que pagarlo desde este enlace.',
+            title: t('claim.cancelledTitle'),
+            body: t('claim.cancelledBody'),
             backgroundColor: palette.dangerLight,
             color: palette.danger,
             icon: <TriangleAlert color={palette.danger} size={25} />,
@@ -105,7 +111,7 @@ export default function PublicClaimScreen() {
       <View style={styles.brand}>
         <BrandLogo variant="horizontal" width={190} testID="pagaste-brand-logo" />
         <AppText variant="caption" color={palette.textSecondary}>
-          Enlace privado de cobro
+          {t('claim.privateLink')}
         </AppText>
       </View>
 
@@ -114,7 +120,7 @@ export default function PublicClaimScreen() {
           <Avatar name={claim.creditorDisplayName} uri={claim.creditorAvatarUrl} size={62} />
         </View>
         <AppText variant="bodySmall" color={palette.textSecondary}>
-          Debes pagar a
+          {t('claim.youOwe')}
         </AppText>
         <AppText variant="screenTitle" style={styles.centerText}>
           {claim.creditorDisplayName}
@@ -126,7 +132,7 @@ export default function PublicClaimScreen() {
           color={palette.primary}
         />
         <AppText variant="caption" color={palette.textSecondary}>
-          Tu parte de {claim.expenseTitle}
+          {t('claim.yourShareOf', { expense: claim.expenseTitle })}
         </AppText>
         {claim.merchantName ? (
           <AppText variant="bodySmall" color={palette.textSecondary} style={styles.centerText}>
@@ -143,9 +149,9 @@ export default function PublicClaimScreen() {
               <Landmark color={palette.successInk} size={22} />
             </View>
             <View style={styles.flex}>
-              <AppText variant="heading">Paga desde tu banco</AppText>
+              <AppText variant="heading">{t('claim.payFromBank')}</AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Haz el Bizum o la transferencia fuera de Pagaste
+                {t('claim.payFromBankBody')}
               </AppText>
             </View>
           </View>
@@ -153,12 +159,12 @@ export default function PublicClaimScreen() {
           <View style={[styles.dataRow, { borderTopColor: palette.divider }]}>
             <View style={styles.flex}>
               <AppText variant="caption" color={palette.textSecondary}>
-                Importe
+                {t('claim.amount')}
               </AppText>
               <AppText variant="label">{formatMoney(claim.amountCents, claim.currency)}</AppText>
             </View>
             <AppButton
-              title="Copiar"
+              title={t('common.copy')}
               variant="ghost"
               size="sm"
               leftIcon={<Copy color={palette.primary} size={17} />}
@@ -166,7 +172,7 @@ export default function PublicClaimScreen() {
                 await Clipboard.setStringAsync(
                   formatMoney(claim.amountCents, claim.currency).replace(/[^\d,.-]/g, ''),
                 );
-                setFeedback('Importe copiado.');
+                setFeedback(t('claim.amountCopied'));
               }}
             />
           </View>
@@ -180,19 +186,19 @@ export default function PublicClaimScreen() {
                 <Phone color={palette.primary} size={18} />
                 <View style={styles.flex}>
                   <AppText variant="caption" color={palette.textSecondary}>
-                    Teléfono de {claim.creditorDisplayName}
+                    {t('claim.phoneOf', { name: claim.creditorDisplayName })}
                   </AppText>
                   <AppText variant="label">{claim.creditorPhoneE164}</AppText>
                 </View>
               </View>
               <AppButton
-                title="Copiar"
+                title={t('common.copy')}
                 variant="ghost"
                 size="sm"
                 leftIcon={<Copy color={palette.primary} size={17} />}
                 onPress={async () => {
                   await Clipboard.setStringAsync(claim.creditorPhoneE164 ?? '');
-                  setFeedback('Teléfono copiado.');
+                  setFeedback(t('claim.phoneCopied'));
                 }}
               />
             </View>
@@ -200,8 +206,7 @@ export default function PublicClaimScreen() {
             <View style={[styles.privatePhone, { borderTopColor: palette.divider }]}>
               <ShieldCheck color={palette.textSecondary} size={18} />
               <AppText variant="bodySmall" color={palette.textSecondary} style={styles.flex}>
-                El teléfono no está visible en este enlace. Usa los datos de pago que te haya
-                facilitado {claim.creditorDisplayName}.
+                {t('claim.phoneHidden', { name: claim.creditorDisplayName })}
               </AppText>
             </View>
           )}
@@ -229,38 +234,29 @@ export default function PublicClaimScreen() {
             <ShieldCheck color={palette.primary} size={22} />
           </View>
           <View style={styles.flex}>
-            <AppText variant="heading">Sin confirmaciones en Pagaste</AppText>
+            <AppText variant="heading">{t('claim.noConfirmation')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              El pago se completa únicamente en tu banco
+              {t('claim.noConfirmationBody')}
             </AppText>
           </View>
         </View>
         <View style={styles.flowSteps}>
-          <FlowStep
-            number="1"
-            text="Realiza el Bizum o la transferencia desde la aplicación de tu banco."
-          />
-          <FlowStep
-            number="2"
-            text="Cuando termines, no tienes que pulsar «Ya he pagado» ni volver a Pagaste."
-          />
-          <FlowStep
-            number="3"
-            text={`${claim.creditorDisplayName} marcará el cobro como recibido cuando vea el ingreso en su banco.`}
-          />
+          <FlowStep number="1" text={t('claim.flowStep1')} />
+          <FlowStep number="2" text={t('claim.flowStep2')} />
+          <FlowStep number="3" text={t('claim.flowStep3', { name: claim.creditorDisplayName })} />
         </View>
         <View style={[styles.disclaimer, { backgroundColor: palette.background }]}>
           <AppText variant="caption" color={palette.textSecondary} style={styles.centerText}>
-            Pagaste no procesa, ejecuta ni verifica el pago.
+            {t('claim.paymentDisclaimer')}
           </AppText>
         </View>
       </Card>
 
       <Card variant="grouped" style={styles.groupedCard}>
         <View style={styles.cardHeading}>
-          <AppText variant="heading">Cómo se calcula</AppText>
+          <AppText variant="heading">{t('claim.breakdown')}</AppText>
           <AppText variant="caption" color={palette.textSecondary}>
-            {claim.items.length} {claim.items.length === 1 ? 'producto' : 'productos'}
+            {claim.items.length} {t(claim.items.length === 1 ? 'claim.product' : 'claim.products')}
           </AppText>
         </View>
         <View style={[styles.divider, { backgroundColor: palette.divider }]} />
@@ -271,7 +267,10 @@ export default function PublicClaimScreen() {
                 name={item.name}
                 amountCents={item.assignedAmountCents}
                 currency={claim.currency}
-                subtitle={`${item.allocationLabel} · línea original ${formatMoney(item.originalLineTotalCents, claim.currency)}`}
+                subtitle={t('claim.originalLine', {
+                  allocation: item.allocationLabel,
+                  amount: formatMoney(item.originalLineTotalCents, claim.currency),
+                })}
               />
             </View>
             {index < claim.items.length - 1 ? (
@@ -293,7 +292,7 @@ export default function PublicClaimScreen() {
       {claim.canDispute ? (
         <AppButton
           testID="public-dispute"
-          title="Hay un error en el reparto"
+          title={t('claim.disputeButton')}
           variant="outline"
           size="lg"
           onPress={() => setDisputeOpen(true)}
@@ -301,22 +300,22 @@ export default function PublicClaimScreen() {
       ) : null}
 
       <AppText variant="caption" color={palette.textSecondary} style={styles.centerText}>
-        Este enlace muestra solo tu parte y los datos autorizados por quien pagó. No lo reenvíes.
+        {t('claim.authorizedData')}
       </AppText>
 
       <BottomSheet
         visible={disputeOpen}
         onClose={() => setDisputeOpen(false)}
-        title="Cuéntanos qué no cuadra"
+        title={t('claim.disputeTitle')}
       >
         <View style={styles.methods}>
           {(
             [
-              ['did_not_consume', 'No consumí esto'],
-              ['incorrect_amount', 'Importe incorrecto'],
-              ['already_paid', 'Ya estaba pagado'],
-              ['unknown_expense', 'No reconozco el gasto'],
-              ['other', 'Otro'],
+              ['did_not_consume', t('claim.reasonDidNotConsume')],
+              ['incorrect_amount', t('claim.reasonIncorrectAmount')],
+              ['already_paid', t('claim.reasonAlreadyPaid')],
+              ['unknown_expense', t('claim.reasonUnknownExpense')],
+              ['other', t('claim.reasonOther')],
             ] as const
           ).map(([value, label]) => (
             <AppButton
@@ -328,14 +327,14 @@ export default function PublicClaimScreen() {
           ))}
         </View>
         <AppInput
-          label="Explicación opcional"
+          label={t('claim.optionalExplanation')}
           value={message}
           onChangeText={setMessage}
           maxLength={500}
           multiline
         />
         <AppButton
-          title="Enviar para revisión"
+          title={t('claim.sendForReview')}
           loading={dispute.isPending}
           onPress={() => dispute.mutate()}
         />

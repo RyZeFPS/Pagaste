@@ -16,16 +16,9 @@ import { ListRowsSkeleton } from '@/components/loading-skeletons';
 import { ThreeDIcon } from '@/components/three-d-icon';
 import { repository } from '@/lib/repository';
 import type { Group } from '@/lib/models';
+import { useI18n } from '@/i18n';
 import { useAppColors } from '@/providers/app-providers';
 import { radii, shadows, spacing } from '@/theme';
-
-const groupTypeLabels: Record<string, string> = {
-  friends: 'Amigos',
-  household: 'Hogar',
-  couple: 'Pareja',
-  trip: 'Viaje',
-  work: 'Trabajo',
-};
 
 const headerEnter = FadeInDown.duration(330).reduceMotion(ReduceMotion.System);
 const cardEnter = (index: number) =>
@@ -36,6 +29,7 @@ const cardEnter = (index: number) =>
 export default function GroupsScreen() {
   const router = useRouter();
   const palette = useAppColors();
+  const { t } = useI18n();
   const query = useQuery({
     queryKey: ['groups'],
     queryFn: repository.listGroups,
@@ -49,15 +43,15 @@ export default function GroupsScreen() {
         <Animated.View entering={headerEnter} style={styles.header}>
           <View style={styles.headerCopy}>
             <AppText variant="display" style={styles.title}>
-              Grupos
+              {t('groups.title')}
             </AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Ten a mano a las personas con las que más compartes.
+              {t('groups.subtitle')}
             </AppText>
           </View>
           <View style={styles.headerActions}>
             <AppButton
-              title="Nuevo"
+              title={t('groups.new')}
               variant="ghost"
               size="sm"
               leftIcon={<Plus color={palette.primary} size={18} strokeWidth={2.2} />}
@@ -73,24 +67,25 @@ export default function GroupsScreen() {
         ) : query.isError ? (
           <Animated.View entering={cardEnter(0)}>
             <Card variant="grouped">
-              <ErrorState
-                body="No hemos podido cargar tus grupos."
-                onRetry={() => void query.refetch()}
-              />
+              <ErrorState body={t('groups.loadError')} onRetry={() => void query.refetch()} />
             </Card>
           </Animated.View>
         ) : !query.data?.length ? (
           <Animated.View entering={cardEnter(0)}>
             <Card variant="grouped" style={styles.emptyCard}>
               <View style={[styles.emptyIcon, { backgroundColor: palette.primaryLight }]}>
-                <ThreeDIcon name="groupPeople" size={64} accessibilityLabel="Grupo de personas" />
+                <ThreeDIcon
+                  name="groupPeople"
+                  size={64}
+                  accessibilityLabel={t('groups.peopleIcon')}
+                />
               </View>
               <EmptyState
-                title="Tu gente, siempre a mano"
-                body="Crea un grupo para añadir a las personas habituales en segundos."
+                title={t('groups.emptyTitle')}
+                body={t('groups.emptyBody')}
                 action={
                   <AppButton
-                    title="Crear mi primer grupo"
+                    title={t('groups.emptyAction')}
                     size="md"
                     onPress={() => router.push('/group/new')}
                   />
@@ -126,6 +121,7 @@ function GroupPreviewCard({
   onPress: () => void;
 }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   const type = group.type.toLowerCase();
   const tone =
     type === 'household'
@@ -135,7 +131,20 @@ function GroupPreviewCard({
         : type === 'trip'
           ? { surface: palette.warningLight, accent: palette.warning }
           : { surface: palette.primaryLight, accent: palette.primary };
-  const typeLabel = groupTypeLabels[type] || 'Grupo compartido';
+  const typeLabel =
+    type === 'friends'
+      ? t('groups.typeFriends')
+      : type === 'household'
+        ? t('groups.typeHousehold')
+        : type === 'couple'
+          ? t('groups.typeCouple')
+          : type === 'trip'
+            ? t('groups.typeTrip')
+            : type === 'work'
+              ? t('groups.typeWork')
+              : type === 'family'
+                ? t('groups.typeFamily')
+                : t('groups.typeShared');
 
   return (
     <Card
@@ -145,7 +154,7 @@ function GroupPreviewCard({
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Abrir grupo ${group.name}`}
+        accessibilityLabel={t('groups.open', { name: group.name })}
         onPress={onPress}
         style={({ pressed }) => [styles.groupCardPressable, pressed && styles.groupCardPressed]}
       >
@@ -177,7 +186,7 @@ function GroupPreviewCard({
             {typeLabel}
           </AppText>
           <AppText numberOfLines={1} variant="caption" color={palette.textSecondary}>
-            {group.description?.trim() || 'Toca para ver gastos, personas y racha'}
+            {group.description?.trim() || t('groups.previewHint')}
           </AppText>
         </View>
         <View style={[styles.chevronBubble, { backgroundColor: tone.surface }]}>

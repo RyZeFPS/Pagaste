@@ -3,6 +3,9 @@ import {
   decimalAmountToCents,
   normalizeReceiptOcrResponse,
   parseReceiptScanResult,
+  receiptCaptureQualityWarnings,
+  receiptLineReviewState,
+  reconcileReceiptAmounts,
 } from '../../src/domain';
 
 describe('OCR normalization', () => {
@@ -91,7 +94,21 @@ describe('OCR normalization', () => {
     expect(parseReceiptScanResult(result)).toEqual(result);
   });
 
-  it('rejects missing required amounts, invalid confidence and negative prices', () => {
+  it('accepts discount lines but rejects inconsistent signs', () => {
+    const discount = normalizeReceiptOcrResponse({
+      totalCents: 850,
+      items: [
+        {
+          name: 'Cupón',
+          quantity: 1,
+          unitPriceCents: -150,
+          lineTotalCents: -150,
+          confidence: 0.9,
+        },
+      ],
+    });
+    expect(discount.items[0]?.lineTotalCents).toBe(-150);
+
     expect(() => normalizeReceiptOcrResponse({ items: [] })).toThrowError(
       expect.objectContaining({ code: 'missing_ocr_amount' }),
     );
@@ -99,8 +116,45 @@ describe('OCR normalization', () => {
     expect(() =>
       normalizeReceiptOcrResponse({
         total: '10',
-        items: [{ name: 'Bad', lineTotal: '-1' }],
+        items: [{ name: 'Bad', unitPrice: '1', lineTotal: '-1' }],
       }),
     ).toThrowError(expect.objectContaining({ code: 'invalid_ocr_amount' }));
+  });
+
+  it('classifies line confidence and reconciles products, discounts and common expenses', () => {
+    expect(receiptLineReviewState(0.91)).toBe('correct');
+    expect(receiptLineReviewState(0.5)).toBe('review');
+    expect(receiptLineReviewState(null)).toBe('unknown');
+
+    expect(
+      reconcileReceiptAmounts(
+        [
+          { name: 'Pizza', lineTotalCents: 1_250 },
+          { name: 'Pizza', lineTotalCents: 1_250 },
+          { name: 'Cupón', lineTotalCents: -300 },
+          { name: 'Gastos de envío', lineTotalCents: 250 },
+        ],
+        2_500,
+      ),
+    ).toEqual({
+      productsCents: 2_500,
+      discountsCents: -300,
+      commonExpensesCents: 250,
+      detectedCents: 2_450,
+      differenceCents: 50,
+      duplicateIndexes: [1],
+    });
+  });
+
+  it('detects only capture issues that are knowable from Expo image metadata', () => {
+    expect(receiptCaptureQualityWarnings({ width: 600, height: 1_000 })).toContain(
+      'image_low_resolution',
+    );
+    expect(receiptCaptureQualityWarnings({ width: 1_600, height: 1_600 })).toContain(
+      'image_unusual_aspect_ratio',
+    );
+    expect(receiptCaptureQualityWarnings({ width: 1_500, height: 2_400 })).toEqual([]);
+    expect(receiptCaptureQualityWarnings({ width: 1_200, height: 9_000 })).toEqual([]);
+    expect(receiptCaptureQualityWarnings({})).toEqual([]);
   });
 });

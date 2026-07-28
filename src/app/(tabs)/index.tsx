@@ -31,10 +31,6 @@ const PENDING_STATUSES = ['pending', 'reminder_sent', 'disputed'];
 const homeEnter = (delay: number) =>
   FadeInDown.duration(340).delay(delay).reduceMotion(ReduceMotion.System);
 
-function claimCount(count: number) {
-  return `${count} ${count === 1 ? 'cobro' : 'cobros'}`;
-}
-
 function ReceiptIllustration() {
   return (
     <View pointerEvents="none" style={styles.heroArtwork}>
@@ -63,6 +59,8 @@ function HomeMetric({
   featured?: boolean;
 }) {
   const palette = useAppColors();
+  const { t } = useI18n();
+  const countLabel = `${count} ${t(count === 1 ? 'home.claimSingular' : 'home.claimPlural')}`;
   const toneColor =
     tone === 'success' ? palette.success : tone === 'warning' ? palette.warning : palette.primary;
   const toneSurface =
@@ -83,7 +81,7 @@ function HomeMetric({
           name="walletReceivable"
           size={68}
           testID="home-wallet-3d"
-          accessibilityLabel="Billetera de dinero por cobrar"
+          accessibilityLabel={t('home.receivableWallet')}
           style={styles.featuredWalletIcon}
         />
         <View style={styles.featuredMetricHeader}>
@@ -102,7 +100,7 @@ function HomeMetric({
         </AppText>
         <View style={styles.featuredMetricCount}>
           <AppText numberOfLines={1} color={palette.white} style={styles.metricCountTextFeatured}>
-            {claimCount(count)}
+            {countLabel}
           </AppText>
         </View>
       </View>
@@ -116,7 +114,9 @@ function HomeMetric({
           name={tone === 'success' ? 'paidCheck' : 'pendingClock'}
           size={44}
           testID={tone === 'success' ? 'home-paid-3d' : 'home-pending-3d'}
-          accessibilityLabel={tone === 'success' ? 'Pago completado' : 'Cobro pendiente'}
+          accessibilityLabel={
+            tone === 'success' ? t('home.completedPayment') : t('home.pendingClaim')
+          }
         />
       </View>
       <View style={styles.compactMetricCopy}>
@@ -125,7 +125,7 @@ function HomeMetric({
             {label}
           </AppText>
           <AppText numberOfLines={1} color={palette.textMuted} style={styles.metricCountText}>
-            {claimCount(count)}
+            {countLabel}
           </AppText>
         </View>
         <AppText
@@ -159,7 +159,7 @@ export default function HomeScreen() {
   const auth = useAuth();
   const palette = useAppColors();
   const notificationCenter = useNotificationCenter();
-  const { formatMoney, formatDate } = useI18n();
+  const { formatMoney, formatDate, t } = useI18n();
   const expenses = useQuery({
     queryKey: ['expenses'],
     queryFn: repository.listExpenses,
@@ -175,7 +175,7 @@ export default function HomeScreen() {
   const isInitialDataLoading =
     (expenses.isPending && expenses.data === undefined) ||
     (claims.isPending && claims.data === undefined);
-  const firstName = auth.profile?.display_name.trim().split(/\s+/u)[0] || 'de nuevo';
+  const firstName = auth.profile?.display_name.trim().split(/\s+/u)[0] || t('home.defaultName');
   const metrics = useMemo(() => {
     const values = claims.data ?? [];
     const receivable = values.filter((claim) => RECEIVABLE_STATUSES.includes(claim.status));
@@ -198,8 +198,8 @@ export default function HomeScreen() {
         <Animated.View entering={homeEnter(0)} style={styles.top}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Abrir perfil"
-            accessibilityHint="Permite editar tu nombre y preferencias"
+            accessibilityLabel={t('home.openProfile')}
+            accessibilityHint={t('home.openProfileHint')}
             onPress={() => router.push('/(tabs)/profile')}
             style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
           >
@@ -217,7 +217,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.identityCopy}>
               <AppText color={palette.primary} style={styles.greeting}>
-                ¡Hola, {firstName}!
+                {t('home.greetingDisplay', { name: firstName })}
               </AppText>
               <BrandLogo
                 variant="horizontal"
@@ -232,8 +232,8 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={
               notificationCenter.unreadCount
-                ? `Notificaciones, ${notificationCenter.unreadCount} sin ver`
-                : 'Notificaciones'
+                ? t('home.notificationsUnread', { count: notificationCenter.unreadCount })
+                : t('home.notifications')
             }
             hitSlop={8}
             onPress={() => router.push('/settings/notifications')}
@@ -260,10 +260,10 @@ export default function HomeScreen() {
             <ReceiptIllustration />
             <View style={styles.heroCopy}>
               <AppText color={palette.white} style={styles.heroTitle}>
-                Escanea, reparte y cobra.
+                {t('home.heroTitle')}
               </AppText>
               <AppText color={palette.white} style={styles.heroSubtitle}>
-                Sube tu ticket y recupera tu dinero sin complicaciones.
+                {t('home.heroBody')}
               </AppText>
             </View>
             <View style={styles.heroActions}>
@@ -279,14 +279,14 @@ export default function HomeScreen() {
               >
                 <Camera color={palette.primary} size={22} strokeWidth={2} />
                 <AppText color={palette.primary} style={styles.scanButtonLabel}>
-                  Escanear ticket
+                  {t('home.scan')}
                 </AppText>
               </Pressable>
               <Pressable
                 testID="manual-expense"
                 accessibilityRole="button"
-                accessibilityLabel="Añadir gasto manualmente"
-                accessibilityHint="Crea un gasto sin escanear un ticket"
+                accessibilityLabel={t('home.manual')}
+                accessibilityHint={t('home.manualHint')}
                 onPress={() =>
                   router.push({ pathname: '/expense/new', params: { mode: 'manual' } })
                 }
@@ -294,7 +294,7 @@ export default function HomeScreen() {
               >
                 <ThreeDIcon name="manualExpense" size={38} testID="home-manual-3d" />
                 <AppText color={palette.white} style={styles.manualButtonLabel}>
-                  Añadir gasto manualmente
+                  {t('home.manual')}
                 </AppText>
               </Pressable>
             </View>
@@ -302,7 +302,7 @@ export default function HomeScreen() {
         </Animated.View>
 
         <Animated.View entering={homeEnter(95)} style={styles.sectionHeader}>
-          <AppText variant="heading">Resumen</AppText>
+          <AppText variant="heading">{t('home.summary')}</AppText>
           <Pressable
             accessibilityRole="button"
             hitSlop={8}
@@ -310,7 +310,7 @@ export default function HomeScreen() {
             style={({ pressed }) => pressed && styles.pressed}
           >
             <AppText color={palette.primary} style={styles.sectionAction}>
-              Ver todo
+              {t('home.seeAll')}
             </AppText>
           </Pressable>
         </Animated.View>
@@ -330,7 +330,7 @@ export default function HomeScreen() {
               />
               <Card style={[styles.metrics, { borderColor: palette.border }]}>
                 <HomeMetric
-                  label="Por cobrar"
+                  label={t('home.toCollect')}
                   amount={formatMoney(metrics.receivable)}
                   count={metrics.receivableCount}
                   tone="primary"
@@ -338,13 +338,13 @@ export default function HomeScreen() {
                 />
                 <View style={styles.metricStack}>
                   <HomeMetric
-                    label="Pendientes"
+                    label={t('home.pending')}
                     amount={formatMoney(metrics.pending)}
                     count={metrics.pendingCount}
                     tone="warning"
                   />
                   <HomeMetric
-                    label="Pagado"
+                    label={t('home.recovered')}
                     amount={formatMoney(metrics.paid)}
                     count={metrics.paidCount}
                     tone="success"
@@ -354,23 +354,20 @@ export default function HomeScreen() {
             </View>
 
             <AppText variant="heading" style={styles.recentTitle}>
-              Cobros recientes
+              {t('home.recent')}
             </AppText>
             {expenses.isError ? (
               <Card style={styles.stateCard}>
-                <ErrorState
-                  body="No hemos podido cargar tus gastos."
-                  onRetry={() => void expenses.refetch()}
-                />
+                <ErrorState body={t('home.loadError')} onRetry={() => void expenses.refetch()} />
               </Card>
             ) : !expenses.data?.length ? (
               <Card style={styles.stateCard}>
                 <EmptyState
-                  title="Aún no has adelantado ningún gasto"
-                  body="Crea uno y comparte cada parte en menos de un minuto."
+                  title={t('home.emptyTitle')}
+                  body={t('home.emptyBody')}
                   action={
                     <AppButton
-                      title="Crear mi primer gasto"
+                      title={t('home.emptyAction')}
                       onPress={() => router.push('/expense/new')}
                     />
                   }
@@ -400,14 +397,14 @@ export default function HomeScreen() {
                   const state = recentStatus(expense, expenseClaims);
                   const status =
                     state === 'paid'
-                      ? { label: 'Pagado', color: palette.success }
+                      ? { label: t('home.statusPaid'), color: palette.success }
                       : state === 'disputed'
-                        ? { label: 'En revisión', color: palette.danger }
+                        ? { label: t('home.statusDisputed'), color: palette.danger }
                         : state === 'reminded'
-                          ? { label: 'Recordatorio enviado', color: palette.primary }
+                          ? { label: t('home.statusReminded'), color: palette.primary }
                           : state === 'pending'
-                            ? { label: 'Pendiente', color: palette.warning }
-                            : { label: 'Borrador', color: palette.textSecondary };
+                            ? { label: t('home.statusPending'), color: palette.warning }
+                            : { label: t('home.statusDraft'), color: palette.textSecondary };
                   const amount = recoverable || expense.recoverable_cents || expense.total_cents;
 
                   return (

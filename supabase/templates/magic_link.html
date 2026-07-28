@@ -1,34 +1,51 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ if eq .Data.locale "en" }}en{{ else }}es{{ end }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tu código de Pagaste</title>
+    <title>
+      {{ if eq .Data.locale "en" }}Your secure Pagaste sign-in link{{ else }}Tu enlace seguro para
+      entrar en Pagaste{{ end }}
+    </title>
   </head>
-  <body style="margin: 0; background: #f6f8fc; color: #14213d; font-family: Arial, sans-serif">
-    <main style="max-width: 520px; margin: 0 auto; padding: 40px 24px">
-      <div style="background: #fff; border: 1px solid #dfe6f2; border-radius: 18px; padding: 32px">
-        <p style="margin: 0 0 20px; color: #2563eb; font-size: 22px; font-weight: 700">Pagaste</p>
-        <h1 style="margin: 0 0 12px; font-size: 24px">Tu código para entrar</h1>
-        <p style="margin: 0 0 24px; line-height: 1.5">
-          Introduce este código de un solo uso en Pagaste. Caduca en una hora.
+  <body style="margin: 0; background: #f5f7fb; color: #111827; font-family: Arial, sans-serif">
+    <main style="max-width: 560px; margin: 0 auto; padding: 40px 20px">
+      <div style="background: #fff; border: 1px solid #e7eaf0; border-radius: 20px; padding: 32px">
+        <p style="margin: 0 0 20px; color: #1769e8; font-size: 22px; font-weight: 700">Pagaste</p>
+        {{ if eq .Data.locale "en" }}
+        <h1 style="margin: 0 0 12px; font-size: 24px; line-height: 1.25">
+          Your secure sign-in link
+        </h1>
+        <p style="margin: 0 0 24px; color: #667085; line-height: 1.6">
+          Use this one-time link to sign in to Pagaste. It expires shortly.
         </p>
-        <p
-          style="
-            margin: 0 0 24px;
-            padding: 18px;
-            border-radius: 12px;
-            background: #eff6ff;
-            font-size: 32px;
-            font-weight: 700;
-            letter-spacing: 8px;
-            text-align: center;
-          "
-        >
-          {{ .Token }}
+        {{ else }}
+        <h1 style="margin: 0 0 12px; font-size: 24px; line-height: 1.25">
+          Tu enlace seguro para entrar
+        </h1>
+        <p style="margin: 0 0 24px; color: #667085; line-height: 1.6">
+          Utiliza este enlace de un solo uso para entrar en Pagaste. Caduca en poco tiempo.
         </p>
-        <p style="margin: 0; color: #5c667a; font-size: 14px; line-height: 1.5">
-          Si no solicitaste este acceso, ignora el mensaje. No compartas el código con nadie.
+        {{ end }}
+        <p style="margin: 0 0 24px">
+          <a
+            href="{{ .ConfirmationURL }}"
+            style="
+              display: inline-block;
+              padding: 14px 20px;
+              border-radius: 12px;
+              background: #1769e8;
+              color: #fff;
+              font-weight: 700;
+              text-decoration: none;
+            "
+            >{{ if eq .Data.locale "en" }}Sign in to Pagaste{{ else }}Entrar en Pagaste{{ end }}</a
+          >
+        </p>
+        <p style="margin: 0; color: #667085; font-size: 14px; line-height: 1.6">
+          {{ if eq .Data.locale "en" }}If you did not request this sign-in link, ignore this
+          message. Do not share the link.{{ else }}Si no has solicitado este acceso, ignora el
+          mensaje. No compartas el enlace.{{ end }}
         </p>
       </div>
     </main>

@@ -34,6 +34,26 @@ const receiptScanResultMigrationSql = readFileSync(
   join(migrationsDirectory, '20260724141537_fix_receipt_scan_result_ordinality.sql'),
   'utf8',
 ).toLowerCase();
+const reminderPreferencesMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724192918_configurable_reminders.sql'),
+  'utf8',
+).toLowerCase();
+const multiPayerMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260724195625_multi_payer_contributions.sql'),
+  'utf8',
+).toLowerCase();
+const claimLinkLifecycleMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260726130808_claim_link_lifecycle.sql'),
+  'utf8',
+).toLowerCase();
+const multiPayerHardeningMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260726131349_multi_payer_hardening.sql'),
+  'utf8',
+).toLowerCase();
+const anonymousOcrLearningMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260726133139_anonymous_ocr_correction_learning.sql'),
+  'utf8',
+).toLowerCase();
 
 const exposedTables = Array.from(
   migrationSql.matchAll(/create\s+table\s+public\.([a-z][a-z0-9_]*)/g),
@@ -61,6 +81,16 @@ describe('Supabase security contract', () => {
     }
     expect(migrationSql).toContain("bucket_id = 'receipts'");
     expect(migrationSql).toContain('private.receipt_object_owned(name)');
+  });
+
+  it('covers the composite foreign keys introduced by collaboration and multi-receipt flows', () => {
+    expect(migrationSql).toContain('expense_collaboration_guests_participant_idx');
+    expect(migrationSql).toMatch(
+      /expense_items_receipt_expense_idx[\s\S]*?\(receipt_id, expense_id\)/,
+    );
+    expect(migrationSql).toMatch(
+      /expense_receipts_scan_job_expense_idx[\s\S]*?\(scan_job_id, expense_id\)/,
+    );
   });
 
   it('keeps group photos private, immutable and scoped to group membership', () => {
@@ -181,9 +211,143 @@ describe('Supabase security contract', () => {
     );
   });
 
+  it('keeps scheduled reminders manual, private and bank-review gated', () => {
+    expect(reminderPreferencesMigrationSql).toContain('create table public.reminder_preferences');
+    expect(reminderPreferencesMigrationSql).toContain(
+      'alter table public.reminder_preferences enable row level security',
+    );
+    for (const operation of ['select', 'insert', 'update', 'delete']) {
+      expect(reminderPreferencesMigrationSql).toContain(`reminder_preferences_${operation}_own`);
+    }
+    expect(reminderPreferencesMigrationSql).toContain('first_delay_hours in (24, 48, 72)');
+    expect(reminderPreferencesMigrationSql).toContain(
+      "message_tone in ('soft', 'neutral', 'direct')",
+    );
+    expect(reminderPreferencesMigrationSql).toContain('p_bank_checked is distinct from true');
+    expect(reminderPreferencesMigrationSql).toContain("message = 'bank_review_required'");
+    expect(reminderPreferencesMigrationSql).toContain('v_seed.reminder_count >= 2');
+    expect(reminderPreferencesMigrationSql).toContain('private.is_quiet_time');
+    expect(reminderPreferencesMigrationSql).toContain('group_same_debtor');
+    expect(reminderPreferencesMigrationSql).toMatch(
+      /grant execute on function public\.preview_claim_reminder\(uuid\) to authenticated/,
+    );
+    expect(reminderPreferencesMigrationSql).toMatch(
+      /grant execute on function public\.prepare_claim_reminder_batch\(jsonb, boolean\) to authenticated/,
+    );
+    expect(reminderPreferencesMigrationSql).toMatch(
+      /revoke all on function public\.prepare_claim_reminder\(uuid, text\)[\s\S]*?from public, anon, authenticated, service_role/,
+    );
+  });
+
+  it('keeps multi-payer contributions transactional, unique and readable with the expense', () => {
+    expect(multiPayerMigrationSql).toContain('create table public.expense_contributions');
+    expect(multiPayerMigrationSql).toContain(
+      'constraint expense_contributions_one_row_per_participant',
+    );
+    expect(multiPayerMigrationSql).toContain(
+      'alter table public.expense_contributions enable row level security',
+    );
+    expect(multiPayerMigrationSql).toContain(
+      'using ((select private.can_read_expense(expense_id)))',
+    );
+    expect(multiPayerMigrationSql).toContain('duplicate_contributor');
+    expect(multiPayerMigrationSql).toContain('participant.user_id is null');
+    expect(multiPayerMigrationSql).toContain(
+      'create unique index expense_participants_expense_user_unique',
+    );
+    expect(multiPayerMigrationSql).toContain(
+      'create or replace function private.validate_expense_ledger_relationship',
+    );
+    expect(multiPayerMigrationSql).toContain("'claim_participant_mismatch'");
+    expect(multiPayerMigrationSql).toMatch(
+      /revoke all on function public\.save_expense_contributions\(uuid, jsonb\)[\s\S]*?from public, anon, authenticated, service_role/,
+    );
+    expect(multiPayerMigrationSql).toMatch(
+      /grant execute on function public\.save_expense_contributions\(uuid, jsonb\)[\s\S]*?to authenticated/,
+    );
+  });
+
+  it('makes public claim links expiring, rotatable, revocable and auditable', () => {
+    expect(claimLinkLifecycleMigrationSql).toContain('public_link_expires_at timestamptz');
+    expect(claimLinkLifecycleMigrationSql).toContain(
+      'create table if not exists private.claim_link_accesses',
+    );
+    expect(claimLinkLifecycleMigrationSql).toContain(
+      'create or replace function public.revoke_claim_link',
+    );
+    expect(claimLinkLifecycleMigrationSql).toContain(
+      'create or replace function public.rotate_claim_link',
+    );
+    expect(claimLinkLifecycleMigrationSql).toContain(
+      'create or replace function public.get_claim_link_activity',
+    );
+    expect(claimLinkLifecycleMigrationSql).toContain('c.public_link_expires_at > now()');
+    expect(claimLinkLifecycleMigrationSql).toContain("'claim_link_regenerated'");
+    expect(claimLinkLifecycleMigrationSql).toContain("'claim_link_revoked'");
+    expect(claimLinkLifecycleMigrationSql).toContain("now() - interval '5 minutes'");
+    expect(claimLinkLifecycleMigrationSql).toMatch(
+      /grant execute on function public\.get_public_claim_payload\(text\)[\s\S]*?to service_role/,
+    );
+    expect(claimLinkLifecycleMigrationSql).not.toMatch(
+      /grant execute on function public\.get_public_claim_payload\(text\)[\s\S]*?to anon/,
+    );
+  });
+
+  it('repeats contribution templates and closes already-balanced expenses without claims', () => {
+    expect(multiPayerHardeningMigrationSql).toContain(
+      'create or replace function private.rescale_draft_expense_contributions',
+    );
+    expect(multiPayerHardeningMigrationSql).toContain('alter function public.repeat_expense(uuid)');
+    expect(multiPayerHardeningMigrationSql).toContain(
+      'public.repeat_expense_without_contributions',
+    );
+    expect(multiPayerHardeningMigrationSql).toContain('public.save_expense_contributions');
+    expect(multiPayerHardeningMigrationSql).toContain(
+      "v_participant_map := coalesce(v_result -> 'participantmap'",
+    );
+    expect(multiPayerHardeningMigrationSql).not.toContain('participant_position');
+    expect(multiPayerHardeningMigrationSql).toContain(
+      'create function public.settle_balanced_expense',
+    );
+    expect(multiPayerHardeningMigrationSql).toMatch(
+      /grant execute on function public\.settle_balanced_expense\(uuid\)[\s\S]*?to authenticated/,
+    );
+  });
+
+  it('keeps OCR correction learning optional, anonymous and service-gated', () => {
+    expect(anonymousOcrLearningMigrationSql).toContain(
+      'ocr_learning_consent boolean not null default false',
+    );
+    expect(anonymousOcrLearningMigrationSql).toContain(
+      'create table private.ocr_correction_patterns',
+    );
+    for (const identifier of ['user_id', 'profile_id', 'expense_id', 'receipt_id', 'merchant_id']) {
+      expect(
+        anonymousOcrLearningMigrationSql.match(
+          /create table private\.ocr_correction_patterns[\s\S]*?\);/,
+        )?.[0],
+      ).not.toContain(identifier);
+    }
+    expect(anonymousOcrLearningMigrationSql).toContain('profile.ocr_learning_consent');
+    expect(anonymousOcrLearningMigrationSql).toContain('ranked.correction_count >= 3');
+    expect(anonymousOcrLearningMigrationSql).toContain(
+      'ranked.correction_count * 5 >= ranked.total_count * 4',
+    );
+    expect(anonymousOcrLearningMigrationSql).toContain('for update of item');
+    expect(anonymousOcrLearningMigrationSql).toMatch(
+      /update public\.expense_items[\s\S]*?source = 'manual'[\s\S]*?ocr_confidence = null/u,
+    );
+    expect(anonymousOcrLearningMigrationSql).toMatch(
+      /grant execute on function public\.submit_anonymous_ocr_correction\(uuid, text\)[\s\S]*?to authenticated/,
+    );
+    expect(anonymousOcrLearningMigrationSql).toMatch(
+      /grant execute on function public\.suggest_anonymous_ocr_corrections\(text\[\]\)[\s\S]*?to service_role/,
+    );
+  });
+
   it('persists ordered OCR products through a service-only invoker RPC', () => {
     expect(receiptScanResultMigrationSql).toContain(
-      "from jsonb_array_elements(v_items) with ordinality as item(value, ordinality)",
+      'from jsonb_array_elements(v_items) with ordinality as item(value, ordinality)',
     );
     expect(receiptScanResultMigrationSql).not.toContain('jsonb_to_recordset');
     expect(receiptScanResultMigrationSql).toContain('security invoker');

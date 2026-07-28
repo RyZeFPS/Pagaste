@@ -13,9 +13,11 @@ import { RequireAuth } from '@/components/app-shell';
 import { AnimatedTabIcon } from '@/components/animated-tab-icon';
 import { SlidingTabIndicator } from '@/components/sliding-tab-indicator';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 
 export default function TabsLayout() {
   const palette = useAppColors();
+  const { t } = useI18n();
   const reduceMotion = useReducedMotion();
   const { width: viewportWidth } = useWindowDimensions();
   const nativeTabBarInset = Math.max(16, (viewportWidth - 480) / 2);
@@ -76,8 +78,8 @@ export default function TabsLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Nuevo gasto',
-              tabBarAccessibilityLabel: 'Crear un nuevo gasto',
+              title: t('tabs.newExpense'),
+              tabBarAccessibilityLabel: t('tabs.newExpenseA11y'),
               tabBarIcon: ({ color, focused }) => (
                 <AnimatedTabIcon focused={focused}>
                   <ReceiptText color={color} size={24} strokeWidth={1.9} />
@@ -88,7 +90,7 @@ export default function TabsLayout() {
           <Tabs.Screen
             name="groups"
             options={{
-              title: 'Grupos',
+              title: t('tabs.groups'),
               tabBarIcon: ({ color, focused }) => (
                 <AnimatedTabIcon focused={focused}>
                   <UsersRound color={color} size={24} strokeWidth={1.9} />
@@ -99,7 +101,7 @@ export default function TabsLayout() {
           <Tabs.Screen
             name="activity"
             options={{
-              title: 'Actividad',
+              title: t('tabs.activity'),
               tabBarIcon: ({ color, focused }) => (
                 <AnimatedTabIcon focused={focused}>
                   <Activity color={color} size={24} strokeWidth={1.9} />
@@ -110,8 +112,8 @@ export default function TabsLayout() {
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Perfil',
-              tabBarAccessibilityLabel: 'Abrir perfil',
+              title: t('tabs.profile'),
+              tabBarAccessibilityLabel: t('tabs.profileA11y'),
               tabBarIcon: ({ color, focused }) => (
                 <AnimatedTabIcon focused={focused}>
                   <UserRound color={color} size={24} strokeWidth={1.9} />

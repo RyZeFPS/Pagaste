@@ -9,27 +9,12 @@ import { generatePublicToken, hashPublicToken } from '../_shared/tokens.ts';
 const inputSchema = z
   .object({
     expenseId: z.string().uuid(),
-    claims: z
-      .array(
-        z
-          .object({
-            debtorParticipantId: z.string().uuid(),
-            amountCents: z.number().int().positive().safe(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(100),
+    // Accepted only so an older installed client can call the updated Edge
+    // Function. Amounts are never trusted: the database calculates every
+    // debtor/creditor transfer from allocations and contributions.
+    claims: z.array(z.unknown()).max(100).optional(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const ids = value.claims.map((claim) => claim.debtorParticipantId);
-    if (new Set(ids).size !== ids.length)
-      context.addIssue({ code: 'custom', message: 'Duplicate debtor' });
-    const total = value.claims.reduce((sum, claim) => sum + BigInt(claim.amountCents), 0n);
-    if (total > BigInt(Number.MAX_SAFE_INTEGER))
-      context.addIssue({ code: 'custom', message: 'Unsafe claim total' });
-  });
+  .strict();
 
 function appUrl(): string {
   const raw = optionalEnv('APP_URL') ?? optionalEnv('EXPO_PUBLIC_APP_URL') ?? 'https://pagaste.app';
@@ -39,12 +24,52 @@ function appUrl(): string {
   return value.toString().replace(/\/$/u, '');
 }
 
-function formatMoney(amountCents: number, currency: string): string {
-  return new Intl.NumberFormat('es-ES', {
+function normalizedLanguage(locale: string | null | undefined): 'es' | 'en' {
+  return locale?.toLowerCase().startsWith('en') ? 'en' : 'es';
+}
+
+function formatMoney(amountCents: number, currency: string, locale: string): string {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,
   }).format(amountCents / 100);
+}
+
+async function loadRecipientLocales(
+  admin: SupabaseClient,
+  participantIds: string[],
+): Promise<Map<string, string>> {
+  if (!participantIds.length) return new Map();
+  const { data: participants, error } = await admin
+    .from('expense_participants')
+    .select('id,user_id')
+    .in('id', [...new Set(participantIds)]);
+  if (error || !participants?.length) return new Map();
+
+  const userIds = participants
+    .map((participant) => participant.user_id)
+    .filter((userId): userId is string => typeof userId === 'string');
+  if (!userIds.length) return new Map();
+
+  const { data: profiles } = await admin
+    .from('profiles')
+    .select('id,locale')
+    .in('id', [...new Set(userIds)]);
+  const localeByUser = new Map(
+    (profiles ?? []).map((profile) => [
+      profile.id,
+      typeof profile.locale === 'string' ? profile.locale : 'es-ES',
+    ]),
+  );
+  return new Map(
+    participants
+      .filter(
+        (participant): participant is { id: string; user_id: string } =>
+          typeof participant.user_id === 'string',
+      )
+      .map((participant) => [participant.id, localeByUser.get(participant.user_id) ?? 'es-ES']),
+  );
 }
 
 async function notifyLinkedDebtors(
@@ -57,38 +82,58 @@ async function notifyLinkedDebtors(
     claims: {
       claimId: string;
       debtorParticipantId: string;
+      creditorParticipantId: string;
       amountCents: number;
       token: string;
     }[];
+    recipientLocales: Map<string, string>;
   },
 ): Promise<void> {
-  const participantIds = input.claims.map((claim) => claim.debtorParticipantId);
+  const participantIds = [
+    ...new Set(
+      input.claims.flatMap((claim) => [claim.debtorParticipantId, claim.creditorParticipantId]),
+    ),
+  ];
   const { data: participants, error } = await admin
     .from('expense_participants')
-    .select('id,user_id')
+    .select('id,user_id,display_name')
     .in('id', participantIds);
   if (error || !participants?.length) return;
 
-  const users = new Map(
+  const debtorUsers = new Map(
     participants
       .filter(
-        (participant): participant is { id: string; user_id: string } =>
-          typeof participant.user_id === 'string',
+        (
+          participant,
+        ): participant is {
+          id: string;
+          user_id: string;
+          display_name: string;
+        } => typeof participant.user_id === 'string',
       )
       .map((participant) => [participant.id, participant.user_id]),
+  );
+  const participantNames = new Map(
+    participants.map((participant) => [participant.id, participant.display_name]),
   );
 
   await Promise.allSettled(
     input.claims.map(async (claim) => {
-      const userId = users.get(claim.debtorParticipantId);
+      const userId = debtorUsers.get(claim.debtorParticipantId);
       if (!userId) return;
+      const creditorName = participantNames.get(claim.creditorParticipantId) ?? input.creditorName;
+      const locale = input.recipientLocales.get(claim.debtorParticipantId) ?? 'es-ES';
+      const language = normalizedLanguage(locale);
       await sendPushToUser(admin, {
         userId,
         eventType: 'claim_requested',
-        title: 'Nueva solicitud de pago',
-        body: `${input.creditorName} te ha solicitado ${formatMoney(claim.amountCents, input.currency)} por ${input.expenseTitle}.`,
+        title: language === 'en' ? 'New payment request' : 'Nueva solicitud de pago',
+        body:
+          language === 'en'
+            ? `${creditorName} requested ${formatMoney(claim.amountCents, input.currency, locale)} from you for ${input.expenseTitle}.`
+            : `${creditorName} te ha solicitado ${formatMoney(claim.amountCents, input.currency, locale)} por ${input.expenseTitle}.`,
         data: {
-          route: '/settings/notifications',
+          route: '/notifications',
           claimId: claim.claimId,
           expenseId: input.expenseId,
         },
@@ -101,38 +146,86 @@ serve(async (req) => {
   const input = inputSchema.parse(await readJson(req));
   const { client, admin, user } = await requireUser(req);
   const baseUrl = appUrl();
+  const { data: settlements, error: previewError } = await client.rpc(
+    'preview_expense_settlements',
+    {
+      p_expense_id: input.expenseId,
+    },
+  );
+  if (previewError) throw fromDatabaseError(previewError, 'CLAIMS_CREATE_FAILED');
+  if (!Array.isArray(settlements) || settlements.length === 0) {
+    const { error: settleError } = await client.rpc('settle_balanced_expense', {
+      p_expense_id: input.expenseId,
+    });
+    if (settleError) throw fromDatabaseError(settleError, 'BALANCED_EXPENSE_SETTLE_FAILED');
+    return ok(req, { claims: [], status: 'settled' }, 201);
+  }
   const secrets = await Promise.all(
-    input.claims.map(async (claim) => {
-      const token = generatePublicToken();
-      return { ...claim, token, tokenHash: await hashPublicToken(token) };
-    }),
+    settlements.map(
+      async (claim: {
+        debtor_participant_id: string;
+        creditor_participant_id: string;
+        amount_cents: number;
+      }) => {
+        const token = generatePublicToken();
+        return {
+          debtorParticipantId: claim.debtor_participant_id,
+          creditorParticipantId: claim.creditor_participant_id,
+          amountCents: claim.amount_cents,
+          token,
+          tokenHash: await hashPublicToken(token),
+        };
+      },
+    ),
   );
   const { data, error } = await client.rpc('create_claims_transaction', {
     p_expense_id: input.expenseId,
-    p_claims: secrets.map(({ debtorParticipantId, amountCents, tokenHash }) => ({
-      debtorParticipantId,
-      amountCents,
-      tokenHash,
-    })),
+    p_claims: secrets.map(
+      ({ debtorParticipantId, creditorParticipantId, amountCents, tokenHash }) => ({
+        debtorParticipantId,
+        creditorParticipantId,
+        amountCents,
+        tokenHash,
+      }),
+    ),
   });
   if (error) throw fromDatabaseError(error, 'CLAIMS_CREATE_FAILED');
   if (!Array.isArray(data))
     throw new ApiError('CLAIMS_CREATE_FAILED', 'No se pudieron crear las solicitudes.', 500);
-  const rows = new Map<string, { claim_id: string; amount_cents: number }>(
-    data.map((row: { debtor_participant_id: string; claim_id: string; amount_cents: number }) => [
-      row.debtor_participant_id,
-      row,
-    ]),
+  const rows = new Map<
+    string,
+    {
+      claim_id: string;
+      amount_cents: number;
+      debtor_participant_id: string;
+      creditor_participant_id: string;
+    }
+  >(
+    data.map(
+      (row: {
+        debtor_participant_id: string;
+        creditor_participant_id: string;
+        claim_id: string;
+        amount_cents: number;
+      }) => [`${row.debtor_participant_id}:${row.creditor_participant_id}`, row],
+    ),
+  );
+  const recipientLocales = await loadRecipientLocales(
+    admin,
+    secrets.map((secret) => secret.debtorParticipantId),
   );
   const createdClaims = secrets.map((secret) => {
-    const row = rows.get(secret.debtorParticipantId);
+    const row = rows.get(`${secret.debtorParticipantId}:${secret.creditorParticipantId}`);
     if (!row) throw new ApiError('CLAIMS_CREATE_FAILED', 'Falta una solicitud creada.', 500);
     return {
       claimId: row.claim_id,
       debtorParticipantId: secret.debtorParticipantId,
+      creditorParticipantId: secret.creditorParticipantId,
       amountCents: row.amount_cents,
       token: secret.token,
-      url: `${baseUrl}/c/${secret.token}`,
+      url: `${baseUrl}/c/${secret.token}?lang=${normalizedLanguage(
+        recipientLocales.get(secret.debtorParticipantId),
+      )}`,
     };
   });
 
@@ -147,6 +240,7 @@ serve(async (req) => {
       currency: expense.currency,
       creditorName: creditor.display_name,
       claims: createdClaims,
+      recipientLocales,
     }).catch((error: unknown) => {
       console.error('Claim push delivery failed', error instanceof Error ? error.name : 'Unknown');
     });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,8 +9,9 @@ import { PasswordField } from '@/components/password-field';
 import { AuthScreenSkeleton } from '@/components/loading-skeletons';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
-import { authErrorMessage, loginSchema } from '@/lib/auth-validation';
+import { authErrorMessage, createAuthValidationSchemas } from '@/lib/auth-validation';
 import { getSafeInviteRedirect } from '@/lib/navigation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 type Form = {
@@ -24,6 +25,8 @@ export default function LoginScreen() {
   const { next: requestedNext } = useLocalSearchParams<{ next?: string | string[] }>();
   const next = getSafeInviteRedirect(requestedNext);
   const palette = useAppColors();
+  const { locale, t } = useI18n();
+  const { loginSchema } = useMemo(() => createAuthValidationSchemas(locale), [locale]);
   const [serverError, setServerError] = useState<string>();
   const {
     control,
@@ -69,7 +72,7 @@ export default function LoginScreen() {
         next ? { pathname: '/(auth)/onboarding', params: { next } } : '/(auth)/onboarding',
       );
     } catch (error) {
-      setServerError(authErrorMessage(error, 'login'));
+      setServerError(authErrorMessage(error, 'login', locale));
     }
   });
 
@@ -79,7 +82,7 @@ export default function LoginScreen() {
         <View style={styles.brand} accessibilityRole="header">
           <BrandLogo variant="horizontal" width={226} testID="pagaste-brand-logo" />
           <AppText variant="label" color={palette.textSecondary}>
-            Escanea, reparte y cobra.
+            {t('app.tagline')}
           </AppText>
         </View>
 
@@ -103,11 +106,9 @@ export default function LoginScreen() {
         <Card padding="spacious" style={styles.formCard}>
           <View style={styles.formHeading}>
             <AppText accessibilityRole="header" variant="screenTitle">
-              Inicia sesión
+              {t('auth.loginTitle')}
             </AppText>
-            <AppText color={palette.textSecondary}>
-              Accede con tu correo y tu contraseña de Pagaste.
-            </AppText>
+            <AppText color={palette.textSecondary}>{t('auth.loginBody')}</AppText>
           </View>
 
           <Controller
@@ -117,8 +118,8 @@ export default function LoginScreen() {
               <AppInput
                 ref={ref}
                 testID="login-email"
-                label="Correo electrónico"
-                placeholder="tu@correo.com"
+                label={t('auth.email')}
+                placeholder={t('auth.emailPlaceholder')}
                 keyboardType="email-address"
                 textContentType="emailAddress"
                 autoCapitalize="none"
@@ -146,8 +147,8 @@ export default function LoginScreen() {
               <PasswordField
                 ref={ref}
                 testID="login-password"
-                label="Contraseña"
-                placeholder="Tu contraseña"
+                label={t('auth.password')}
+                placeholder={t('auth.passwordPlaceholder')}
                 textContentType="password"
                 autoComplete="current-password"
                 enterKeyHint="go"
@@ -164,10 +165,10 @@ export default function LoginScreen() {
           />
 
           <AppButton
-            title="He olvidado mi contraseña"
+            title={t('auth.forgotPassword')}
             variant="ghost"
             size="sm"
-            accessibilityHint="Envía instrucciones para crear una contraseña nueva"
+            accessibilityHint={t('auth.forgotPasswordHint')}
             style={styles.forgotButton}
             onPress={() => {
               const email = getValues('email').trim();
@@ -192,7 +193,7 @@ export default function LoginScreen() {
 
           <AppButton
             testID="login-submit"
-            title="Entrar"
+            title={t('auth.enter')}
             size="lg"
             fullWidth
             leftIcon={<LogIn color={palette.white} size={20} />}
@@ -203,14 +204,14 @@ export default function LoginScreen() {
           <View style={[styles.securityNote, { backgroundColor: palette.primaryLight }]}>
             <ShieldCheck color={palette.primary} size={18} />
             <AppText variant="caption" color={palette.textSecondary} style={styles.flex}>
-              Tu contraseña se transmite cifrada y nunca se guarda en el dispositivo.
+              {t('auth.passwordSecurity')}
             </AppText>
           </View>
 
           <View style={styles.createAccount}>
-            <AppText color={palette.textSecondary}>¿Aún no tienes cuenta?</AppText>
+            <AppText color={palette.textSecondary}>{t('auth.noAccount')}</AppText>
             <AppButton
-              title="Crear cuenta"
+              title={t('auth.createAccount')}
               variant="outline"
               size="sm"
               onPress={() =>
@@ -224,14 +225,14 @@ export default function LoginScreen() {
 
         <View style={styles.legalLinks}>
           <AppButton
-            title="Condiciones de uso"
+            title={t('auth.terms')}
             variant="ghost"
             size="sm"
             onPress={() => router.push('/settings/terms')}
           />
           <View style={[styles.legalDot, { backgroundColor: palette.textMuted }]} />
           <AppButton
-            title="Privacidad"
+            title={t('auth.privacy')}
             variant="ghost"
             size="sm"
             onPress={() => router.push('/settings/privacy')}

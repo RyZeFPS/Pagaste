@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { parseReceiptLines } from '../../server/ocr/receipt-parser';
 import {
+  assessReceiptImage,
   recognizeReceiptImage,
   shutdownReceiptOcr,
 } from '../../server/ocr/tesseract-receipt';
@@ -27,19 +28,33 @@ afterAll(async () => {
 });
 
 describe('server receipt OCR', () => {
-  it(
-    'reads a receipt image with the bundled Spanish model',
-    async () => {
-      const recognition = await recognizeReceiptImage(syntheticReceipt);
-      const result = parseReceiptLines(recognition.lines, {
-        pageConfidence: recognition.confidence,
-      });
+  it('reports measurable image-quality problems before interpreting text', async () => {
+    const poorImage = Buffer.from(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="500" height="850">
+        <rect width="500" height="850" fill="#161616"/>
+      </svg>
+    `);
+    const quality = await assessReceiptImage(poorImage);
 
-      expect(recognition.lines.length).toBeGreaterThanOrEqual(4);
-      expect(result.merchantName).toBe('Mercadona');
-      expect(result.totalCents).toBe(390);
-      expect(result.items.map((item) => item.lineTotalCents)).toEqual([150, 240]);
-    },
-    45_000,
-  );
+    expect(quality.warnings).toEqual(
+      expect.arrayContaining([
+        'image_low_resolution',
+        'image_too_dark',
+        'image_low_contrast',
+        'image_blurry',
+      ]),
+    );
+  });
+
+  it('reads a receipt image with the bundled Spanish model', async () => {
+    const recognition = await recognizeReceiptImage(syntheticReceipt);
+    const result = parseReceiptLines(recognition.lines, {
+      pageConfidence: recognition.confidence,
+    });
+
+    expect(recognition.lines.length).toBeGreaterThanOrEqual(4);
+    expect(result.merchantName).toBe('Mercadona');
+    expect(result.totalCents).toBe(390);
+    expect(result.items.map((item) => item.lineTotalCents)).toEqual([150, 240]);
+  }, 45_000);
 });

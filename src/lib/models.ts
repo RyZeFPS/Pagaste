@@ -11,6 +11,7 @@ export type Profile = {
   locale: string;
   timezone: string;
   notifications_enabled: boolean;
+  ocr_learning_consent: boolean;
   onboarding_completed: boolean;
   created_at: string;
   archived_at?: string | null;
@@ -40,6 +41,7 @@ export type Expense = {
 export type ExpenseItem = {
   id: string;
   expense_id: string;
+  receipt_id?: string | null;
   name: string;
   quantity: number;
   unit_price_cents: number | null;
@@ -48,6 +50,23 @@ export type ExpenseItem = {
   sort_order: number;
   ocr_confidence: number | null;
   source: 'manual' | 'ocr' | 'adjustment';
+};
+
+export type ExpenseReceipt = {
+  id: string;
+  expense_id: string;
+  storage_path: string;
+  mime_type: string;
+  original_name: string | null;
+  sort_order: number;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  scan_job_id: string | null;
+  merchant_name: string | null;
+  total_cents: number | null;
+  confidence: number | null;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Participant = {
@@ -70,6 +89,23 @@ export type ItemAllocation = {
   shares: number | null;
   percentage: number | null;
   units: number | null;
+  amount_cents: number;
+};
+
+export type ExpenseContribution = {
+  id: string;
+  expense_id: string;
+  participant_id: string;
+  amount_cents: number;
+  method: 'card' | 'cash' | 'reservation' | 'other';
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExpenseSettlement = {
+  debtor_participant_id: string;
+  creditor_participant_id: string;
   amount_cents: number;
 };
 
@@ -98,6 +134,48 @@ export type Claim = {
   expense?: Pick<Expense, 'id' | 'title' | 'merchant_name' | 'occurred_at' | 'currency'> | null;
   disputes?: ClaimDispute[];
   events?: { event_type: string; created_at: string }[];
+};
+
+export type ReminderTone = 'soft' | 'neutral' | 'direct';
+
+export type ReminderPreferences = {
+  user_id: string;
+  enabled: boolean;
+  first_delay_hours: 24 | 48 | 72;
+  second_delay_days: number;
+  quiet_start: string | null;
+  quiet_end: string | null;
+  message_tone: ReminderTone;
+  group_same_debtor: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ReminderPreviewClaim = {
+  claimId: string;
+  expenseId: string;
+  expenseTitle: string;
+  merchantName: string | null;
+  amountCents: number;
+  currency: string;
+  debtorDisplayName: string;
+  debtorUserId: string | null;
+  reminderCount: number;
+  dueAt: string | null;
+};
+
+export type ReminderPreview = {
+  eligible: boolean;
+  blockedReason: 'disabled' | 'status' | 'limit_reached' | 'not_due' | 'quiet_hours' | null;
+  nextAllowedAt: string | null;
+  debtorDisplayName: string;
+  debtorUserId: string | null;
+  recipientLocale: string;
+  currency: string;
+  totalCents: number;
+  messageTone: ReminderTone;
+  grouped: boolean;
+  claims: ReminderPreviewClaim[];
 };
 
 export type Group = {
@@ -146,10 +224,65 @@ export type GroupStreakCard = {
 };
 
 export type ExpenseDetail = Expense & {
+  receipts: ExpenseReceipt[];
   items: ExpenseItem[];
   participants: Participant[];
   allocations: ItemAllocation[];
+  contributions: ExpenseContribution[];
   claims: Claim[];
+};
+
+export type ExpenseCollaborationSession = {
+  id: string;
+  expenseId: string;
+  status: 'active' | 'applied' | 'revoked';
+  expiresAt: string;
+  expired: boolean;
+  createdAt: string;
+};
+
+export type ExpenseCollaborationGuest = {
+  id: string;
+  displayName: string;
+  status: 'submitted' | 'applied' | 'dismissed';
+  submittedAt: string;
+  items: {
+    id: string;
+    name: string;
+    lineTotalCents: number;
+  }[];
+};
+
+export type ExpenseCollaborationOwnerPayload = {
+  session: ExpenseCollaborationSession | null;
+  guests: ExpenseCollaborationGuest[];
+};
+
+export type PublicExpenseCollaboration = {
+  expenseId: string;
+  title: string;
+  merchantName: string | null;
+  currency: string;
+  totalCents: number;
+  expiresAt: string;
+  items: {
+    id: string;
+    name: string;
+    quantity: number;
+    lineTotalCents: number;
+  }[];
+};
+
+export type StartedExpenseCollaboration = {
+  sessionId: string;
+  expiresAt: string;
+  url: string;
+};
+
+export type AppliedExpenseCollaboration = {
+  expenseId: string;
+  participantCount: number;
+  itemCount: number;
 };
 
 export type PublicClaim = PublicClaimDto;
@@ -157,8 +290,18 @@ export type PublicClaim = PublicClaimDto;
 export type ClaimLink = {
   claimId: string;
   debtorParticipantId: string;
+  creditorParticipantId: string;
   amountCents: number;
   url: string;
+};
+
+export type ClaimLinkActivity = {
+  claimId: string;
+  active: boolean;
+  expiresAt: string | null;
+  accessCount: number;
+  lastAccessedAt: string | null;
+  recentAccesses: { accessedAt: string }[];
 };
 
 export type AppNotificationKind = 'claim_requested' | 'payment_check_requested';

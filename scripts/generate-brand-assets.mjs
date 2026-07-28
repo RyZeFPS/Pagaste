@@ -33,10 +33,7 @@ await sharp(wordmark)
   .png({ compressionLevel: 9 })
   .toFile(await outputPath('assets/images/pagaste-wordmark.png'));
 
-const appIconMark = await sharp(mark)
-  .resize({ height: 760, fit: 'inside' })
-  .png()
-  .toBuffer();
+const appIconMark = await sharp(mark).resize({ height: 760, fit: 'inside' }).png().toBuffer();
 await sharp({
   create: {
     width: 1024,
@@ -51,10 +48,7 @@ await sharp({
   .png({ compressionLevel: 9 })
   .toFile(await outputPath('assets/images/icon.png'));
 
-const faviconMark = await sharp(mark)
-  .resize({ height: 56, fit: 'inside' })
-  .png()
-  .toBuffer();
+const faviconMark = await sharp(mark).resize({ height: 56, fit: 'inside' }).png().toBuffer();
 await sharp({
   create: { width: 64, height: 64, channels: 4, background: transparent },
 })
@@ -62,10 +56,7 @@ await sharp({
   .png({ compressionLevel: 9 })
   .toFile(await outputPath('assets/images/favicon.png'));
 
-const splashMark = await sharp(mark)
-  .resize({ height: 440, fit: 'inside' })
-  .png()
-  .toBuffer();
+const splashMark = await sharp(mark).resize({ height: 440, fit: 'inside' }).png().toBuffer();
 await sharp({
   create: { width: 512, height: 512, channels: 4, background: transparent },
 })
@@ -73,10 +64,7 @@ await sharp({
   .png({ compressionLevel: 9 })
   .toFile(await outputPath('assets/images/splash-icon.png'));
 
-const androidMark = await sharp(mark)
-  .resize({ height: 520, fit: 'inside' })
-  .png()
-  .toBuffer();
+const androidMark = await sharp(mark).resize({ height: 520, fit: 'inside' }).png().toBuffer();
 await sharp({
   create: { width: 1024, height: 1024, channels: 4, background: transparent },
 })

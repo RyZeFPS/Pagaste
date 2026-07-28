@@ -1,7 +1,7 @@
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, type PropsWithChildren } from 'react';
+import { useEffect, useRef, type PropsWithChildren } from 'react';
 import { AppState, Platform, View } from 'react-native';
-import { I18nProvider } from '@/i18n';
+import { I18nProvider, normalizeLocale, useI18n } from '@/i18n';
 import { AuthProvider, useAuth } from '@/providers/auth-provider';
 import { useFinanceLiveRefresh } from '@/hooks/use-home-live-refresh';
 import { NotificationCenterProvider } from '@/providers/notification-center-provider';
@@ -47,6 +47,24 @@ function FinanceRealtimeBridge({ children }: PropsWithChildren) {
   );
 }
 
+function ProfileLocaleBridge({ children }: PropsWithChildren) {
+  const auth = useAuth();
+  const { setLocale } = useI18n();
+  const appliedProfile = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!auth.profile) {
+      appliedProfile.current = null;
+      return;
+    }
+    if (appliedProfile.current === auth.profile.id) return;
+    appliedProfile.current = auth.profile.id;
+    setLocale(normalizeLocale(auth.profile.locale));
+  }, [auth.profile, setLocale]);
+
+  return children;
+}
+
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -54,7 +72,9 @@ export function AppProviders({ children }: PropsWithChildren) {
       <I18nProvider>
         <ThemeContext.Provider value={colors.light}>
           <AuthProvider>
-            <FinanceRealtimeBridge>{children}</FinanceRealtimeBridge>
+            <ProfileLocaleBridge>
+              <FinanceRealtimeBridge>{children}</FinanceRealtimeBridge>
+            </ProfileLocaleBridge>
           </AuthProvider>
         </ThemeContext.Provider>
       </I18nProvider>

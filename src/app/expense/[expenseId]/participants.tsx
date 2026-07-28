@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ChevronRight,
   Minus,
   Plus,
+  QrCode,
   ReceiptText,
   Send,
   Sparkles,
+  Star,
   Trash2,
+  WalletCards,
 } from 'lucide-react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AppButton,
@@ -34,28 +37,39 @@ import {
   splitEvenly,
   sumCents,
 } from '@/domain/money';
-import {
-  equalAllocationValues,
-  isManualRemainder,
-} from '@/domain/manual-expense';
+import { equalAllocationValues, isManualRemainder } from '@/domain/manual-expense';
 import { repository } from '@/lib/repository';
 import type { ExpenseItem, Participant } from '@/lib/models';
+import {
+  favoritePersonKey,
+  findDuplicatePerson,
+  mergePersonSuggestions,
+  rankPersonSuggestions,
+  type DuplicateReason,
+  type PersonIdentity,
+  type PersonSuggestion,
+} from '@/domain/person-suggestions';
+import { loadFavoritePeople, saveFavoritePeople } from '@/lib/favorite-people';
+import { getPeopleCopy } from '@/features/people/i18n';
+import { collaborationCopy } from '@/features/collaboration/i18n';
 import { useAppColors } from '@/providers/app-providers';
 import { useI18n } from '@/i18n';
+import { useAuth } from '@/providers/auth-provider';
 import { radii, spacing } from '@/theme';
 import { ThreeDIcon } from '@/components/three-d-icon';
 import { productThreeDAsset } from '@/lib/product-visual';
+import {
+  calculateSettlementTransfers,
+  type ContributionMethod,
+  type SettlementTransfer,
+} from '@/domain/contributions';
 
 type AllocationMode = 'all' | 'all_except' | 'one' | 'equal' | 'units' | 'custom' | 'percentage';
 
-const modeLabels: Record<AllocationMode, string> = {
-  all: 'Todos',
-  all_except: 'Todos menos una persona',
-  one: 'Una persona',
-  equal: 'Partes iguales',
-  units: 'Por unidades',
-  custom: 'Importes personalizados',
-  percentage: 'Por porcentaje',
+type DuplicateResolution = {
+  candidate: PersonIdentity;
+  existing: Participant;
+  reason: DuplicateReason;
 };
 
 export default function ParticipantsScreen() {
@@ -69,9 +83,24 @@ export default function ParticipantsScreen() {
 function ParticipantsContent() {
   const { expenseId } = useLocalSearchParams<{ expenseId: string }>();
   const router = useRouter();
+  const auth = useAuth();
   const palette = useAppColors();
   const cache = useQueryClient();
-  const { formatMoney } = useI18n();
+  const { formatMoney, locale, t } = useI18n();
+  const peopleCopy = getPeopleCopy(locale);
+  const collaborativeCopy = collaborationCopy(locale);
+  const modeLabels = useMemo<Record<AllocationMode, string>>(
+    () => ({
+      all: t('participants.modeAll'),
+      all_except: t('participants.modeAllExcept'),
+      one: t('participants.modeOne'),
+      equal: t('participants.modeEqual'),
+      units: t('participants.modeUnits'),
+      custom: t('participants.modeCustom'),
+      percentage: t('participants.modePercentage'),
+    }),
+    [t],
+  );
   const query = useQuery({
     queryKey: ['expense', expenseId],
     queryFn: () => repository.expense(expenseId),
@@ -95,14 +124,52 @@ function ParticipantsContent() {
   const [percentages, setPercentages] = useState<Record<string, string>>({});
   const [savingSplit, setSavingSplit] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [favoriteKeys, setFavoriteKeys] = useState<Set<string>>(new Set());
+  const [duplicateResolution, setDuplicateResolution] = useState<DuplicateResolution>();
+  const [editingContributions, setEditingContributions] = useState(false);
+  const [contributionAmounts, setContributionAmounts] = useState<Record<string, number>>({});
+  const [contributionMethods, setContributionMethods] = useState<
+    Record<string, ContributionMethod>
+  >({});
+  const [contributionError, setContributionError] = useState<string>();
   const detail = query.data;
+  const recentPeopleQuery = useQuery({
+    queryKey: ['recent-people', auth.user?.id],
+    enabled: Boolean(auth.user?.id),
+    queryFn: () => repository.listRecentPeople(auth.user!.id),
+  });
+  const currentGroupQuery = useQuery({
+    queryKey: ['group', detail?.group_id],
+    enabled: Boolean(detail?.group_id),
+    queryFn: () => repository.group(detail!.group_id!),
+  });
+  useEffect(() => {
+    let active = true;
+    if (!auth.user?.id) {
+      return () => {
+        active = false;
+      };
+    }
+    void loadFavoritePeople(auth.user.id).then((keys) => {
+      if (active) setFavoriteKeys(new Set(keys));
+    });
+    return () => {
+      active = false;
+    };
+  }, [auth.user?.id]);
   const refresh = () => cache.invalidateQueries({ queryKey: ['expense', expenseId] });
   const add = useMutation({
-    mutationFn: async () => {
-      if (name.trim().length < 2) throw new Error('Escribe un nombre válido.');
+    mutationFn: async (candidate: PersonIdentity & { avatarPath?: string | null }) => {
+      if (candidate.displayName.trim().length < 2) throw new Error(peopleCopy.invalidName);
       const participant = await repository.addParticipant(
         expenseId,
-        { displayName: name.trim() },
+        {
+          displayName: candidate.displayName.trim(),
+          userId: candidate.userId ?? undefined,
+          email: candidate.email ?? undefined,
+          phoneE164: candidate.phoneE164 ?? undefined,
+          avatarPath: candidate.avatarPath ?? undefined,
+        },
         detail?.participants.length ?? 0,
       );
       const participantIds = [
@@ -110,9 +177,7 @@ function ParticipantsContent() {
         participant.id,
       ];
       for (const item of detail?.items ?? []) {
-        const current = detail?.allocations.filter(
-          (allocation) => allocation.item_id === item.id,
-        );
+        const current = detail?.allocations.filter((allocation) => allocation.item_id === item.id);
         if (!current?.length || current.every((allocation) => allocation.method === 'equal'))
           await repository.replaceAllocations(
             item.id,
@@ -123,11 +188,12 @@ function ParticipantsContent() {
     onSuccess: async () => {
       setName('');
       setParticipantError(undefined);
+      setDuplicateResolution(undefined);
       setAddingParticipant(false);
       await refresh();
     },
     onError: (cause) =>
-      setParticipantError(cause instanceof Error ? cause.message : 'No se ha podido añadir.'),
+      setParticipantError(cause instanceof Error ? cause.message : peopleCopy.addFailed),
   });
   const allocationsByItem = useMemo(
     () =>
@@ -148,9 +214,68 @@ function ParticipantsContent() {
       );
     return totals;
   }, [detail?.allocations]);
+  const paidByParticipant = useMemo(() => {
+    const paid = new Map<string, number>();
+    for (const contribution of detail?.contributions ?? []) {
+      paid.set(
+        contribution.participant_id,
+        sumCents([paid.get(contribution.participant_id) ?? 0, contribution.amount_cents]),
+      );
+    }
+    if (!paid.size && detail) {
+      const primaryPayer = detail.participants.find((participant) => participant.is_payer);
+      if (primaryPayer && detail.total_cents > 0) paid.set(primaryPayer.id, detail.total_cents);
+    }
+    return paid;
+  }, [detail]);
+  const personSuggestions = useMemo(() => {
+    const groupName = currentGroupQuery.data?.group.name ?? null;
+    const groupSuggestions: PersonSuggestion[] = (currentGroupQuery.data?.members ?? [])
+      .filter((member) => member.status === 'active' && member.user_id !== auth.user?.id)
+      .map((member) => ({
+        id: `group:${member.id}`,
+        displayName: member.display_name,
+        userId: member.user_id,
+        avatarPath: member.avatar_path,
+        groupName,
+        sources: ['group'],
+      }));
+    const merged = mergePersonSuggestions([...groupSuggestions, ...(recentPeopleQuery.data ?? [])]);
+    return rankPersonSuggestions(merged, favoriteKeys).slice(0, 20);
+  }, [auth.user?.id, currentGroupQuery.data, favoriteKeys, recentPeopleQuery.data]);
+  const requestAddPerson = (candidate: PersonIdentity & { avatarPath?: string | null }) => {
+    if (!detail) return;
+    const duplicate = findDuplicatePerson(
+      candidate,
+      detail.participants.map((participant) => ({
+        ...participant,
+        displayName: participant.display_name,
+        userId: participant.user_id,
+        phoneE164: participant.phone_e164,
+      })),
+    );
+    if (duplicate) {
+      setDuplicateResolution({
+        candidate,
+        existing: duplicate.person,
+        reason: duplicate.reason,
+      });
+      return;
+    }
+    add.mutate(candidate);
+  };
+  const toggleFavorite = async (person: PersonSuggestion) => {
+    if (!auth.user?.id) return;
+    const key = favoritePersonKey(person);
+    const next = new Set(favoriteKeys);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setFavoriteKeys(next);
+    await saveFavoritePeople(auth.user.id, [...next]);
+  };
   const addProduct = useMutation({
     mutationFn: async () => {
-      if (!detail) throw new Error('No hemos podido cargar el gasto.');
+      if (!detail) throw new Error(t('participants.expenseLoadError'));
       const parsedQuantity = Number(productQuantity.replace(',', '.'));
       if (
         productName.trim().length < 2 ||
@@ -159,7 +284,7 @@ function ParticipantsContent() {
         !Number.isFinite(parsedQuantity) ||
         parsedQuantity <= 0
       )
-        throw new Error('Escribe un producto, una cantidad y un importe válidos.');
+        throw new Error(t('participants.productInvalid'));
 
       const remainder = detail.items.find((item) => isManualRemainder(item.category));
       const detailedTotal = sumCents(
@@ -170,7 +295,9 @@ function ParticipantsContent() {
       const available = remainder?.line_total_cents ?? detail.total_cents - detailedTotal;
       if (productAmount > available)
         throw new Error(
-          `Solo quedan ${formatMoney(Math.max(0, available), detail.currency)} sin detallar.`,
+          t('participants.productAvailable', {
+            amount: formatMoney(Math.max(0, available), detail.currency),
+          }),
         );
 
       const product = await repository.addItem(
@@ -242,10 +369,70 @@ function ParticipantsContent() {
       await refresh();
     },
     onError: (cause) =>
-      setProductError(
-        cause instanceof Error ? cause.message : 'No se ha podido añadir el producto.',
+      setProductError(cause instanceof Error ? cause.message : t('participants.productAddError')),
+  });
+  const saveContributions = useMutation({
+    mutationFn: async () => {
+      if (!detail) throw new Error(t('participants.expenseLoadError'));
+      const contributions = detail.participants
+        .map((participant) => ({
+          participantId: participant.id,
+          amountCents: contributionAmounts[participant.id] ?? 0,
+          method: contributionMethods[participant.id] ?? ('card' as const),
+        }))
+        .filter((contribution) => contribution.amountCents > 0);
+      const unsupportedContributor = contributions.find(
+        (contribution) =>
+          !detail.participants.find(
+            (participant) => participant.id === contribution.participantId && participant.user_id,
+          ),
+      );
+      if (unsupportedContributor) throw new Error(t('participants.registeredContributorOnly'));
+      const contributedTotal = sumCents(
+        contributions.map((contribution) => contribution.amountCents),
+      );
+      if (!contributions.length || contributedTotal !== detail.total_cents) {
+        throw new Error(
+          t('participants.contributionExactError', {
+            amount: formatMoney(detail.total_cents, detail.currency),
+          }),
+        );
+      }
+      return repository.saveExpenseContributions(expenseId, contributions);
+    },
+    onSuccess: async () => {
+      setContributionError(undefined);
+      setEditingContributions(false);
+      await refresh();
+    },
+    onError: (cause) =>
+      setContributionError(
+        cause instanceof Error ? cause.message : t('participants.contributionSaveError'),
       ),
   });
+  const openContributionEditor = () => {
+    if (!detail) return;
+    setContributionAmounts(
+      Object.fromEntries(
+        detail.participants.map((participant) => [
+          participant.id,
+          paidByParticipant.get(participant.id) ?? 0,
+        ]),
+      ),
+    );
+    setContributionMethods(
+      Object.fromEntries(
+        detail.participants.map((participant) => [
+          participant.id,
+          detail.contributions.find(
+            (contribution) => contribution.participant_id === participant.id,
+          )?.method ?? 'card',
+        ]),
+      ),
+    );
+    setContributionError(undefined);
+    setEditingContributions(true);
+  };
 
   const openAllocation = (item: ExpenseItem, participants: Participant[]) => {
     const existing = allocationsByItem.get(item.id) ?? [];
@@ -298,10 +485,7 @@ function ParticipantsContent() {
   if (query.isError || !detail)
     return (
       <ScreenContainer>
-        <ErrorState
-          body="No hemos podido cargar los participantes."
-          onRetry={() => void query.refetch()}
-        />
+        <ErrorState body={t('participants.loadError')} onRetry={() => void query.refetch()} />
       </ScreenContainer>
     );
 
@@ -327,7 +511,7 @@ function ParticipantsContent() {
         );
         method = 'equal';
       } else if (mode === 'one') {
-        if (selected.length !== 1) throw new Error('Elige una persona.');
+        if (selected.length !== 1) throw new Error(t('participants.chooseOne'));
         targets = [{ memberId: selected[0], amountCents: editingItem.line_total_cents }];
         method = 'custom';
       } else if (mode === 'equal') {
@@ -383,9 +567,7 @@ function ParticipantsContent() {
       setEditingItem(undefined);
       await refresh();
     } catch (cause) {
-      setAllocationError(
-        cause instanceof Error ? cause.message : 'No se ha podido guardar el reparto.',
-      );
+      setAllocationError(cause instanceof Error ? cause.message : t('participants.splitSaveError'));
     } finally {
       setSavingSplit(false);
     }
@@ -393,7 +575,7 @@ function ParticipantsContent() {
 
   const suggestAllocations = async () => {
     if (detail.participants.length < 2) {
-      setFeedback('Añade al menos una persona antes de sugerir un reparto.');
+      setFeedback(t('participants.addPersonBeforeSuggest'));
       setAddingParticipant(true);
       return;
     }
@@ -409,10 +591,10 @@ function ParticipantsContent() {
           ),
         );
       }
-      setFeedback('Todo el gasto vuelve a estar repartido a partes iguales.');
+      setFeedback(t('participants.equalSplitRestored'));
       await refresh();
     } catch {
-      setFeedback('No hemos podido sugerir el reparto.');
+      setFeedback(t('participants.suggestError'));
     } finally {
       setSuggesting(false);
     }
@@ -424,12 +606,40 @@ function ParticipantsContent() {
         (allocationsByItem.get(item.id) ?? []).map((allocation) => allocation.amount_cents),
       ) === item.line_total_cents,
   );
+  const contributedTotal = sumCents([...paidByParticipant.values()]);
+  let settlementTransfers: SettlementTransfer[] = [];
+  if (allocationsValid && contributedTotal === detail.total_cents) {
+    try {
+      settlementTransfers = calculateSettlementTransfers(
+        detail.participants.map((participant) => ({
+          participantId: participant.id,
+          shareCents: totalsByParticipant.get(participant.id) ?? 0,
+          paidCents: paidByParticipant.get(participant.id) ?? 0,
+          sortOrder: participant.sort_order,
+        })),
+      );
+    } catch {
+      settlementTransfers = [];
+    }
+  }
+  const settlementByDebtor = new Map<string, number>();
+  for (const settlement of settlementTransfers) {
+    settlementByDebtor.set(
+      settlement.debtorParticipantId,
+      sumCents([
+        settlementByDebtor.get(settlement.debtorParticipantId) ?? 0,
+        settlement.amountCents,
+      ]),
+    );
+  }
   const debtors = detail.participants.filter(
-    (participant) => !participant.is_payer && (totalsByParticipant.get(participant.id) ?? 0) > 0,
+    (participant) => (settlementByDebtor.get(participant.id) ?? 0) > 0,
   );
-  const totalToCollect = sumCents(
-    debtors.map((participant) => totalsByParticipant.get(participant.id) ?? 0),
+  const totalToCollect = sumCents([...settlementByDebtor.values()]);
+  const contributors = detail.participants.filter(
+    (participant) => (paidByParticipant.get(participant.id) ?? 0) > 0,
   );
+  const contributionDraftTotal = sumCents(Object.values(contributionAmounts));
   const manualRemainder = detail.items.find((item) => isManualRemainder(item.category));
   const detailedTotal = sumCents(
     detail.items
@@ -443,7 +653,9 @@ function ParticipantsContent() {
       .map((person) => person.id);
     const equalItems = detail.items.filter((item) => {
       const allocations = allocationsByItem.get(item.id) ?? [];
-      return !allocations.length || allocations.every((allocation) => allocation.method === 'equal');
+      return (
+        !allocations.length || allocations.every((allocation) => allocation.method === 'equal')
+      );
     });
     await repository.deleteParticipant(participant.id);
     for (const item of equalItems)
@@ -458,11 +670,11 @@ function ParticipantsContent() {
     <View style={[styles.page, { backgroundColor: palette.background }]}>
       <ScreenContainer>
         <PageHeader
-          title="Repartir productos"
+          title={t('participants.splitTitle')}
           action={
             <AppButton
-              title="Igualar"
-              accessibilityLabel="Repartir todo a partes iguales"
+              title={t('participants.equalize')}
+              accessibilityLabel={t('participants.equalizeA11y')}
               variant="ghost"
               size="sm"
               loading={suggesting}
@@ -496,13 +708,13 @@ function ParticipantsContent() {
                 numberOfLines={1}
                 style={styles.personName}
               >
-                {participant.is_payer ? 'Tú' : participant.display_name}
+                {participant.is_payer ? t('common.you') : participant.display_name}
               </AppText>
             </View>
           ))}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Añadir persona"
+            accessibilityLabel={t('expense.addParticipant')}
             onPress={() => {
               setParticipantError(undefined);
               setAddingParticipant(true);
@@ -513,20 +725,41 @@ function ParticipantsContent() {
               <Plus color={palette.primary} size={28} />
             </View>
             <AppText variant="bodySmall" style={styles.personName}>
-              Añadir
+              {t('common.add')}
             </AppText>
           </Pressable>
         </ScrollView>
 
+        <Card style={styles.collaborationCard}>
+          <View style={[styles.equalBannerIcon, { backgroundColor: palette.primaryLight }]}>
+            <QrCode color={palette.primary} size={21} />
+          </View>
+          <View style={styles.flex}>
+            <AppText variant="label">{collaborativeCopy.ownerIntroTitle}</AppText>
+            <AppText variant="bodySmall" color={palette.textSecondary}>
+              {collaborativeCopy.ownerIntro}
+            </AppText>
+          </View>
+          <AppButton
+            title={collaborativeCopy.qrAction}
+            variant="outline"
+            size="sm"
+            onPress={() => router.push(`/expense/${expenseId}/collaborate` as Href)}
+          />
+        </Card>
+
         {detail.participants.length >= 2 ? (
-          <Card variant="flat" style={[styles.equalBanner, { backgroundColor: palette.primaryLight }]}>
+          <Card
+            variant="flat"
+            style={[styles.equalBanner, { backgroundColor: palette.primaryLight }]}
+          >
             <View style={[styles.equalBannerIcon, { backgroundColor: palette.surface }]}>
               <Sparkles color={palette.primary} size={19} />
             </View>
             <View style={styles.flex}>
-              <AppText variant="label">Reparto igual preparado</AppText>
+              <AppText variant="label">{t('participants.equalPreparedTitle')}</AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Cada producto empieza dividido entre todos. Tócalo para cambiar quién paga.
+                {t('participants.equalPreparedBody')}
               </AppText>
             </View>
           </Card>
@@ -542,24 +775,31 @@ function ParticipantsContent() {
 
         {detail.participants.length < 2 ? (
           <EmptyState
-            title="Añade al menos una persona"
-            body="Incluye a quien debe devolverte una parte."
-            action={<AppButton title="Añadir persona" onPress={() => setAddingParticipant(true)} />}
+            title={t('participants.minimumTitle')}
+            body={t('participants.minimumBody')}
+            action={
+              <AppButton
+                title={t('expense.addParticipant')}
+                onPress={() => setAddingParticipant(true)}
+              />
+            }
           />
         ) : (
           <>
             <View style={styles.productsHeading}>
               <View style={styles.flex}>
-                <AppText variant="sectionTitle">Detalle del gasto</AppText>
+                <AppText variant="sectionTitle">{t('participants.detailTitle')}</AppText>
                 <AppText variant="bodySmall" color={palette.textSecondary}>
                   {availableToDetail > 0
-                    ? `${formatMoney(availableToDetail, detail.currency)} todavía sin detallar`
-                    : 'Todo el gasto está detallado'}
+                    ? t('participants.remainingToDetail', {
+                        amount: formatMoney(availableToDetail, detail.currency),
+                      })
+                    : t('participants.fullyDetailed')}
                 </AppText>
               </View>
               {availableToDetail > 0 ? (
                 <AppButton
-                  title="Añadir producto"
+                  title={t('participants.addProduct')}
                   variant="outline"
                   size="sm"
                   leftIcon={<Plus color={palette.primary} size={17} />}
@@ -577,17 +817,20 @@ function ParticipantsContent() {
                 const itemAsset = productThreeDAsset(item);
                 const allocationLabel =
                   itemAllocations.length === 0
-                    ? 'Asignar'
+                    ? t('expense.unassigned')
                     : itemAllocations.length === 1
                       ? (detail.participants.find(
                           (participant) => participant.id === itemAllocations[0]?.participant_id,
-                        )?.display_name ?? 'Asignado')
-                      : `Compartido · ${itemAllocations.length}`;
+                        )?.display_name ?? t('expense.assigned'))
+                      : `${t('participants.shared')} · ${itemAllocations.length}`;
                 return (
                   <Pressable
                     key={item.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`${isRemainder ? 'Resto sin detallar' : item.name}: ${allocationLabel}. Cambiar reparto`}
+                    accessibilityLabel={t('participants.allocationA11y', {
+                      item: isRemainder ? t('participants.unassignedRemainder') : item.name,
+                      allocation: allocationLabel,
+                    })}
                     onPress={() => openAllocation(item, detail.participants)}
                     style={({ pressed }) => [
                       styles.productRow,
@@ -614,16 +857,18 @@ function ParticipantsContent() {
                     </View>
                     <View style={styles.productCopy}>
                       <AppText variant="label">
-                        {isRemainder ? 'Reparto general' : item.name}
+                        {isRemainder ? t('participants.generalSplit') : item.name}
                       </AppText>
                       <AppText variant="bodySmall" color={palette.textSecondary}>
                         {isRemainder
-                          ? `${formatMoney(item.line_total_cents, detail.currency)} sin productos`
+                          ? t('participants.withoutProducts', {
+                              amount: formatMoney(item.line_total_cents, detail.currency),
+                            })
                           : formatMoney(item.line_total_cents, detail.currency)}
                       </AppText>
                       {!itemAllocations.length ? (
                         <AppText variant="caption" color={palette.danger}>
-                          Producto sin asignar
+                          {t('participants.productUnassigned')}
                         </AppText>
                       ) : null}
                     </View>
@@ -639,7 +884,7 @@ function ParticipantsContent() {
                         color={palette.primary}
                         numberOfLines={1}
                       >
-                        {itemAllocations.length > 1 ? 'Compartido' : allocationLabel}
+                        {itemAllocations.length > 1 ? t('participants.shared') : allocationLabel}
                       </AppText>
                       {itemAllocations.length > 1 ? (
                         <View style={styles.miniAvatars}>
@@ -687,8 +932,46 @@ function ParticipantsContent() {
         )}
 
         {detail.participants.length >= 2 ? (
+          <Card style={styles.contributionCard}>
+            <View style={styles.contributionHeading}>
+              <View style={[styles.equalBannerIcon, { backgroundColor: palette.primaryLight }]}>
+                <WalletCards color={palette.primary} size={20} />
+              </View>
+              <View style={styles.flex}>
+                <AppText variant="sectionTitle">{t('participants.contributionTitle')}</AppText>
+                <AppText variant="bodySmall" color={palette.textSecondary}>
+                  {t('participants.contributionBody')}
+                </AppText>
+              </View>
+              <AppButton
+                title={t('common.edit')}
+                size="sm"
+                variant="outline"
+                onPress={openContributionEditor}
+              />
+            </View>
+            {contributors.map((participant) => (
+              <View key={participant.id} style={styles.contributorRow}>
+                <Avatar name={participant.display_name} uri={participant.avatar_path} size={34} />
+                <AppText variant="bodySmall" style={styles.flex}>
+                  {participant.display_name}
+                </AppText>
+                <AppText variant="label" color={palette.primary}>
+                  {formatMoney(paidByParticipant.get(participant.id) ?? 0, detail.currency)}
+                </AppText>
+              </View>
+            ))}
+            {contributedTotal !== detail.total_cents ? (
+              <AppText variant="bodySmall" color={palette.dangerInk}>
+                {t('participants.contributionMismatch')}
+              </AppText>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {detail.participants.length >= 2 ? (
           <Card style={styles.summaryCard}>
-            <AppText variant="sectionTitle">Resumen de cobros</AppText>
+            <AppText variant="sectionTitle">{t('participants.summaryTitle')}</AppText>
             {debtors.length ? (
               <View style={styles.summaryPeople}>
                 {debtors.map((participant, index) => (
@@ -712,44 +995,150 @@ function ParticipantsContent() {
                       color={palette.primary}
                       style={styles.summaryAmount}
                     >
-                      {formatMoney(totalsByParticipant.get(participant.id) ?? 0, detail.currency)}
+                      {formatMoney(settlementByDebtor.get(participant.id) ?? 0, detail.currency)}
                     </AppText>
                   </View>
                 ))}
               </View>
             ) : (
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Asigna los productos para calcular cuánto debe cada persona.
+                {t('participants.assignHelp')}
               </AppText>
             )}
             <View style={[styles.summaryTotal, { borderTopColor: palette.divider }]}>
-              <AppText variant="label">Total a cobrar</AppText>
+              <AppText variant="label">{t('participants.totalToCollect')}</AppText>
               <AppText variant="metric">{formatMoney(totalToCollect, detail.currency)}</AppText>
             </View>
           </Card>
         ) : null}
         <AppButton
           testID="review-expense"
-          title="Enviar cobros"
+          title={
+            totalToCollect > 0 ? t('participants.sendCollections') : t('participants.finishExpense')
+          }
           variant="success"
           size="lg"
           fullWidth
           leftIcon={<Send color={palette.white} size={21} />}
-          disabled={detail.participants.length < 2 || !allocationsValid || totalToCollect <= 0}
+          disabled={
+            detail.participants.length < 2 ||
+            !allocationsValid ||
+            contributedTotal !== detail.total_cents
+          }
           onPress={() => router.push(`/expense/${expenseId}/review`)}
         />
       </ScreenContainer>
+      <BottomSheet
+        visible={editingContributions}
+        onClose={() => {
+          if (saveContributions.isPending) return;
+          setEditingContributions(false);
+          setContributionError(undefined);
+        }}
+        title={t('participants.contributionSheetTitle')}
+      >
+        <AppText variant="bodySmall" color={palette.textSecondary}>
+          {t('participants.contributionSheetBody')}
+        </AppText>
+        {detail.participants.map((participant) => {
+          const selectedMethod = contributionMethods[participant.id] ?? 'card';
+          return (
+            <Card key={participant.id} variant="flat" style={styles.contributionEditorRow}>
+              <View style={styles.contributorRow}>
+                <Avatar name={participant.display_name} uri={participant.avatar_path} size={38} />
+                <AppText variant="label" style={styles.flex}>
+                  {participant.display_name}
+                </AppText>
+              </View>
+              <MoneyInput
+                label={t('participants.amountAdvanced')}
+                valueCents={contributionAmounts[participant.id] ?? 0}
+                editable={Boolean(participant.user_id)}
+                onChangeCents={(value) =>
+                  setContributionAmounts((current) => ({
+                    ...current,
+                    [participant.id]: Math.max(0, value),
+                  }))
+                }
+                currency={detail.currency}
+                hint={
+                  participant.user_id
+                    ? detail.currency
+                    : t('participants.registeredContributorOnly')
+                }
+              />
+              {(contributionAmounts[participant.id] ?? 0) > 0 ? (
+                <View style={styles.methodButtons}>
+                  {(
+                    [
+                      ['card', t('participants.methodCard')],
+                      ['cash', t('participants.methodCash')],
+                      ['reservation', t('participants.methodReservation')],
+                      ['other', t('participants.methodOther')],
+                    ] as const
+                  ).map(([method, label]) => (
+                    <AppButton
+                      key={method}
+                      title={label}
+                      size="sm"
+                      variant={selectedMethod === method ? 'primary' : 'secondary'}
+                      onPress={() =>
+                        setContributionMethods((current) => ({
+                          ...current,
+                          [participant.id]: method,
+                        }))
+                      }
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </Card>
+          );
+        })}
+        <View
+          style={[
+            styles.contributionTotal,
+            {
+              borderColor:
+                contributionDraftTotal === detail.total_cents ? palette.success : palette.warning,
+              backgroundColor:
+                contributionDraftTotal === detail.total_cents
+                  ? palette.successLight
+                  : palette.warningLight,
+            },
+          ]}
+        >
+          <AppText variant="label">{t('participants.totalContributed')}</AppText>
+          <AppText variant="heading">
+            {formatMoney(contributionDraftTotal, detail.currency)}
+          </AppText>
+          <AppText variant="caption" color={palette.textSecondary}>
+            {t('participants.mustBe', {
+              amount: formatMoney(detail.total_cents, detail.currency),
+            })}
+          </AppText>
+        </View>
+        {contributionError ? (
+          <AppText color={palette.dangerInk}>{contributionError}</AppText>
+        ) : null}
+        <AppButton
+          title={t('participants.saveContributions')}
+          loading={saveContributions.isPending}
+          disabled={contributionDraftTotal !== detail.total_cents}
+          onPress={() => saveContributions.mutate()}
+        />
+      </BottomSheet>
       <BottomSheet
         visible={addingProduct}
         onClose={() => {
           setAddingProduct(false);
           setProductError(undefined);
         }}
-        title="Añadir producto"
+        title={t('participants.addProductSheetTitle')}
       >
         <View style={[styles.productBudget, { backgroundColor: palette.primaryLight }]}>
           <AppText variant="bodySmall" color={palette.textSecondary}>
-            Importe disponible
+            {t('participants.availableAmount')}
           </AppText>
           <AppText variant="metric" color={palette.primary}>
             {formatMoney(Math.max(0, availableToDetail), detail.currency)}
@@ -757,34 +1146,32 @@ function ParticipantsContent() {
         </View>
         <AppInput
           testID="split-item-name"
-          label="Producto"
-          placeholder="Pizza"
+          label={t('expense.itemName')}
+          placeholder={t('expense.itemPlaceholder')}
           value={productName}
           onChangeText={setProductName}
         />
         <AppInput
-          label="Cantidad"
+          label={t('participants.quantity')}
           keyboardType="decimal-pad"
           value={productQuantity}
-          onChangeText={(value) =>
-            setProductQuantity(value.replace(/[^\d.,]/gu, '').slice(0, 8))
-          }
-          hint="Unidades o cantidad con hasta tres decimales"
+          onChangeText={(value) => setProductQuantity(value.replace(/[^\d.,]/gu, '').slice(0, 8))}
+          hint={t('participants.quantityHint')}
         />
         <MoneyInput
           testID="split-item-amount"
-          label="Importe total"
+          label={t('participants.totalAmount')}
           valueCents={productAmount}
           onChangeCents={setProductAmount}
           currency={detail.currency}
         />
         <AppText variant="caption" color={palette.textSecondary}>
-          Lo repartiremos por igual. Después puedes tocar el producto para cambiar la asignación.
+          {t('participants.addSplitHelp')}
         </AppText>
         {productError ? <AppText color={palette.danger}>{productError}</AppText> : null}
         <AppButton
           testID="split-add-item"
-          title="Añadir y repartir"
+          title={t('participants.addAndSplit')}
           loading={addProduct.isPending}
           leftIcon={<Plus color={palette.white} size={19} />}
           onPress={() => addProduct.mutate()}
@@ -793,28 +1180,140 @@ function ParticipantsContent() {
       <BottomSheet
         visible={addingParticipant || detail.participants.length < 2}
         onClose={() => setAddingParticipant(false)}
-        title="Añadir participante"
+        title={t('participants.addSheetTitle')}
       >
         <AppText variant="bodySmall" color={palette.textSecondary}>
-          No necesita una cuenta. Bastará con su nombre.
+          {peopleCopy.intro}
         </AppText>
+        {recentPeopleQuery.isPending || currentGroupQuery.isPending ? (
+          <AppText variant="bodySmall" color={palette.textSecondary}>
+            {peopleCopy.loading}
+          </AppText>
+        ) : personSuggestions.length ? (
+          <View style={styles.suggestions}>
+            <AppText variant="label">
+              {detail.group_id ? peopleCopy.habitualGroup : peopleCopy.recent}
+            </AppText>
+            {personSuggestions.map((person) => {
+              const identity = {
+                displayName: person.displayName,
+                userId: person.userId,
+                email: person.email,
+                phoneE164: person.phoneE164,
+              };
+              const alreadyAdded = Boolean(
+                findDuplicatePerson(
+                  identity,
+                  detail.participants.map((participant) => ({
+                    displayName: participant.display_name,
+                    userId: participant.user_id,
+                    email: participant.email,
+                    phoneE164: participant.phone_e164,
+                  })),
+                ),
+              );
+              const isFavorite = favoriteKeys.has(favoritePersonKey(person));
+              return (
+                <View
+                  key={person.id}
+                  style={[styles.suggestionRow, { borderColor: palette.divider }]}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={peopleCopy.suggestionA11y(person.displayName)}
+                    accessibilityState={{ disabled: alreadyAdded }}
+                    disabled={alreadyAdded || add.isPending}
+                    onPress={() => requestAddPerson(person)}
+                    style={({ pressed }) => [
+                      styles.suggestionMain,
+                      pressed && styles.pressed,
+                      alreadyAdded && styles.disabledSuggestion,
+                    ]}
+                  >
+                    <Avatar name={person.displayName} uri={person.avatarPath} size={38} />
+                    <View style={styles.flex}>
+                      <AppText variant="label">{person.displayName}</AppText>
+                      <AppText variant="caption" color={palette.textSecondary}>
+                        {alreadyAdded
+                          ? peopleCopy.alreadyAdded
+                          : (person.groupName ??
+                            (person.sources.includes('group')
+                              ? peopleCopy.habitualGroup
+                              : peopleCopy.recent))}
+                      </AppText>
+                    </View>
+                  </Pressable>
+                  <IconButton
+                    label={isFavorite ? peopleCopy.favoriteRemove : peopleCopy.favoriteAdd}
+                    variant="plain"
+                    icon={
+                      <Star
+                        color={isFavorite ? palette.warning : palette.textMuted}
+                        fill={isFavorite ? palette.warning : 'transparent'}
+                        size={19}
+                      />
+                    }
+                    onPress={() => void toggleFavorite(person)}
+                  />
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <AppText variant="caption" color={palette.textSecondary}>
+            {peopleCopy.noSuggestions}
+          </AppText>
+        )}
+        {duplicateResolution ? (
+          <Card
+            variant="flat"
+            style={[styles.duplicateCard, { backgroundColor: palette.warningLight }]}
+          >
+            <AppText variant="label" color={palette.warningInk}>
+              {peopleCopy.duplicateTitle}
+            </AppText>
+            <AppText variant="bodySmall" color={palette.textSecondary}>
+              {peopleCopy.duplicateBody(
+                duplicateResolution.candidate.displayName,
+                duplicateResolution.existing.display_name,
+              )}
+            </AppText>
+            <View style={styles.duplicateActions}>
+              <AppButton
+                title={peopleCopy.duplicateUse}
+                size="sm"
+                onPress={() => {
+                  setFeedback(peopleCopy.alreadyAdded);
+                  setDuplicateResolution(undefined);
+                  setAddingParticipant(false);
+                }}
+              />
+              <AppButton
+                title={peopleCopy.duplicateCancel}
+                variant="ghost"
+                size="sm"
+                onPress={() => setDuplicateResolution(undefined)}
+              />
+            </View>
+          </Card>
+        ) : null}
         <AppInput
           testID="participant-name"
-          label="Nombre de la persona"
-          placeholder="Ferran"
+          label={t('expense.participantName')}
+          placeholder={t('expense.participantPlaceholder')}
           value={name}
           onChangeText={setName}
           error={participantError}
         />
         <AppButton
           testID="add-participant"
-          title="Añadir persona"
+          title={t('expense.addParticipant')}
           loading={add.isPending}
-          onPress={() => add.mutate()}
+          onPress={() => requestAddPerson({ displayName: name.trim() })}
         />
         {detail.participants.some((participant) => !participant.is_payer) ? (
           <View style={styles.managePeople}>
-            <AppText variant="label">Participantes añadidos</AppText>
+            <AppText variant="label">{t('participants.addedPeople')}</AppText>
             {detail.participants
               .filter((participant) => !participant.is_payer)
               .map((participant) => (
@@ -824,10 +1323,12 @@ function ParticipantsContent() {
                     {participant.display_name}
                   </AppText>
                   <IconButton
-                    label={`Eliminar ${participant.display_name}`}
+                    label={t('participants.deletePersonA11y', {
+                      name: participant.display_name,
+                    })}
                     icon={<Trash2 size={17} color={palette.danger} />}
-                  variant="plain"
-                  onPress={async () => {
+                    variant="plain"
+                    onPress={async () => {
                       await removeParticipant(participant);
                     }}
                   />
@@ -840,7 +1341,11 @@ function ParticipantsContent() {
       <BottomSheet
         visible={Boolean(editingItem)}
         onClose={() => setEditingItem(undefined)}
-        title={editingItem ? `Repartir ${editingItem.name}` : 'Repartir producto'}
+        title={
+          editingItem
+            ? t('participants.splitItemTitle', { name: editingItem.name })
+            : t('participants.splitProductFallback')
+        }
       >
         <View style={styles.modes}>
           {(Object.keys(modeLabels) as AllocationMode[]).map((value) => (
@@ -878,7 +1383,7 @@ function ParticipantsContent() {
         ) : null}
         {mode === 'all_except' ? (
           <>
-            <AppText>Elige a quién excluir:</AppText>
+            <AppText>{t('participants.excludePrompt')}</AppText>
             <View style={styles.chips}>
               {detail.participants.map((participant) => (
                 <ParticipantChip
@@ -895,7 +1400,7 @@ function ParticipantsContent() {
           ? detail.participants.map((participant) => (
               <AppInput
                 key={participant.id}
-                label={`Unidades de ${participant.display_name}`}
+                label={t('participants.unitsFor', { name: participant.display_name })}
                 keyboardType="number-pad"
                 value={units[participant.id] ?? '1'}
                 onChangeText={(value) =>
@@ -925,7 +1430,9 @@ function ParticipantsContent() {
           ? detail.participants.map((participant) => (
               <AppInput
                 key={participant.id}
-                label={`Porcentaje de ${participant.display_name}`}
+                label={t('participants.percentageFor', {
+                  name: participant.display_name,
+                })}
                 keyboardType="decimal-pad"
                 value={percentages[participant.id] ?? ''}
                 onChangeText={(value) =>
@@ -934,13 +1441,13 @@ function ParticipantsContent() {
                     [participant.id]: value.replace(/[^\d,.]/g, ''),
                   }))
                 }
-                hint="La suma debe ser exactamente 100 %"
+                hint={t('participants.percentageHint')}
               />
             ))
           : null}
         {allocationError ? <AppText color={palette.danger}>{allocationError}</AppText> : null}
         <AppButton
-          title="Aplicar reparto"
+          title={t('participants.applySplit')}
           loading={savingSplit}
           onPress={() => void applyAllocation()}
         />
@@ -972,6 +1479,11 @@ const styles = StyleSheet.create({
   },
   personName: { width: 64, textAlign: 'center' },
   equalBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  collaborationCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -1028,6 +1540,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   summaryCard: { paddingVertical: 14, gap: spacing.sm },
+  contributionCard: { gap: spacing.md },
+  contributionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  contributorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  contributionEditorRow: { gap: spacing.md },
+  methodButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  contributionTotal: {
+    borderWidth: 1,
+    borderRadius: radii.control,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
   summaryPeople: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   summaryPerson: {
     minWidth: 0,
@@ -1058,6 +1589,24 @@ const styles = StyleSheet.create({
   },
   managePeople: { gap: spacing.sm },
   managePersonRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  suggestions: { gap: spacing.xs },
+  suggestionRow: {
+    minHeight: 54,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  suggestionMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  disabledSuggestion: { opacity: 0.5 },
+  duplicateCard: { gap: spacing.sm },
+  duplicateActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   modes: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
 });

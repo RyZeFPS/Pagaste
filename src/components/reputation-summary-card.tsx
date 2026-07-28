@@ -5,38 +5,37 @@ import { ThreeDIcon } from '@/components/three-d-icon';
 import { AppButton, AppText, Card, LoadingSkeleton, ProgressBar } from '@/components/ui';
 import type { ReputationCard as ReputationData } from '@/lib/models';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
-const reputationLabels: Record<ReputationData['level'], string> = {
-  new: 'Nuevo en Pagaste',
-  very_reliable: 'Muy fiable',
-  reliable: 'Fiable',
-  building: 'Creando historial',
-  improving: 'Mejorando',
-};
-
-function percentage(value: number | null) {
+function percentage(value: number | null, intlLocale: string) {
   if (value === null) return '—';
   const normalized = value <= 1 ? value * 100 : value;
-  return `${Math.round(Math.min(100, Math.max(0, normalized)))} %`;
+  return new Intl.NumberFormat(intlLocale, {
+    style: 'percent',
+    maximumFractionDigits: 0,
+  }).format(Math.min(100, Math.max(0, normalized)) / 100);
 }
 
-function hours(value: number | null) {
+function hours(value: number | null, translate: ReturnType<typeof useI18n>['t']) {
   if (value === null) return '—';
-  if (value < 1) return `${Math.max(1, Math.round(value * 60))} min`;
-  return `${Math.round(value)} h`;
+  if (value < 1) {
+    return translate('reputation.minutes', { value: Math.max(1, Math.round(value * 60)) });
+  }
+  return translate('reputation.hours', { value: Math.round(value) });
 }
 
-function reminders(value: number | null) {
+function reminders(value: number | null, intlLocale: string) {
   if (value === null) return '—';
-  return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(value);
 }
 
 export function ReputationSummarySkeleton() {
+  const { t } = useI18n();
   return (
     <Card
       accessibilityRole="progressbar"
-      accessibilityLabel="Cargando tu reputación"
+      accessibilityLabel={t('reputation.loading')}
       accessibilityState={{ busy: true }}
       padding="spacious"
       style={styles.card}
@@ -73,21 +72,29 @@ export function ReputationSummaryCard({
   onRetry?: () => void;
 }) {
   const palette = useAppColors();
+  const { intlLocale, t } = useI18n();
+  const reputationLabels: Record<ReputationData['level'], string> = {
+    new: t('reputation.levelNew'),
+    very_reliable: t('reputation.levelVeryReliable'),
+    reliable: t('reputation.levelReliable'),
+    building: t('reputation.levelBuilding'),
+    improving: t('reputation.levelImproving'),
+  };
 
   if (error || !reputation) {
     return (
       <Card variant="outlined" padding="spacious" style={styles.card}>
         <View style={styles.header}>
-          <ThreeDIcon name="reputationShield" size={48} accessibilityLabel="Reputación" />
+          <ThreeDIcon name="reputationShield" size={48} accessibilityLabel={t('reputation.icon')} />
           <View style={styles.flex}>
-            <AppText variant="sectionTitle">Tu reputación</AppText>
+            <AppText variant="sectionTitle">{t('reputation.title')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              No hemos podido cargar tu historial ahora mismo.
+              {t('reputation.loadError')}
             </AppText>
           </View>
         </View>
         {onRetry ? (
-          <AppButton title="Volver a intentar" variant="outline" size="sm" onPress={onRetry} />
+          <AppButton title={t('reputation.retry')} variant="outline" size="sm" onPress={onRetry} />
         ) : null}
       </Card>
     );
@@ -111,18 +118,22 @@ export function ReputationSummaryCard({
     <Card
       accessibilityLabel={
         isNew
-          ? `Nuevo en Pagaste, ${reputation.completedPayments} pagos completados`
-          : `${reputationLabels[reputation.level]}, ${reputation.score} de 100, ${reputation.completedPayments} pagos completados`
+          ? t('reputation.a11yNew', { payments: reputation.completedPayments })
+          : t('reputation.a11yScore', {
+              level: reputationLabels[reputation.level],
+              score: reputation.score ?? 0,
+              payments: reputation.completedPayments,
+            })
       }
       padding="spacious"
       style={styles.card}
     >
       <View style={styles.header}>
-        <ThreeDIcon name="reputationShield" size={50} accessibilityLabel="Reputación" />
+        <ThreeDIcon name="reputationShield" size={50} accessibilityLabel={t('reputation.icon')} />
         <View style={styles.flex}>
-          <AppText variant="sectionTitle">Tu reputación</AppText>
+          <AppText variant="sectionTitle">{t('reputation.title')}</AppText>
           <AppText variant="bodySmall" color={palette.textSecondary}>
-            Tu forma de pagar, de un vistazo.
+            {t('reputation.summary')}
           </AppText>
         </View>
         <View style={[styles.levelBadge, { backgroundColor: levelBackground }]}>
@@ -137,9 +148,9 @@ export function ReputationSummaryCard({
           <View style={styles.newHeading}>
             <Sparkles color={palette.primary} size={25} strokeWidth={1.9} />
             <View style={styles.flex}>
-              <AppText variant="label">Estás creando tu historial</AppText>
+              <AppText variant="label">{t('reputation.buildingTitle')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
-                La puntuación aparecerá tras tus primeros pagos confirmados.
+                {t('reputation.buildingBody')}
               </AppText>
             </View>
           </View>
@@ -148,7 +159,9 @@ export function ReputationSummaryCard({
             color={palette.primary}
           />
           <AppText variant="caption" color={palette.textSecondary}>
-            {Math.min(reputation.completedPayments, 3)} de 3 pagos para tu primera valoración
+            {t('reputation.firstRating', {
+              payments: Math.min(reputation.completedPayments, 3),
+            })}
           </AppText>
         </View>
       ) : (
@@ -164,7 +177,7 @@ export function ReputationSummaryCard({
                 </AppText>
               </View>
               <AppText variant="caption" color={palette.textSecondary}>
-                Índice de fiabilidad
+                {t('reputation.index')}
               </AppText>
             </View>
             <View style={[styles.paymentHighlight, { backgroundColor: palette.primaryLight }]}>
@@ -174,7 +187,7 @@ export function ReputationSummaryCard({
                   {reputation.completedPayments}
                 </AppText>
                 <AppText color={palette.textSecondary} style={styles.paymentLabel}>
-                  pagos
+                  {t('reputation.payments')}
                 </AppText>
               </View>
             </View>
@@ -186,29 +199,29 @@ export function ReputationSummaryCard({
       <View style={styles.metrics}>
         <Metric
           icon={<CheckCircle2 color={palette.successInk} size={18} strokeWidth={2} />}
-          label="En 24 horas"
-          value={percentage(reputation.within24Rate)}
+          label={t('reputation.within24')}
+          value={percentage(reputation.within24Rate, intlLocale)}
           backgroundColor={palette.successLight}
           color={palette.successInk}
         />
         <Metric
           icon={<Clock3 color={palette.warningInk} size={18} strokeWidth={2} />}
-          label="Tiempo habitual"
-          value={hours(reputation.medianPaymentHours)}
+          label={t('reputation.usualTime')}
+          value={hours(reputation.medianPaymentHours, t)}
           backgroundColor={palette.warningLight}
           color={palette.warningInk}
         />
         <Metric
           icon={<BellRing color={palette.primary} size={18} strokeWidth={2} />}
-          label="Avisos / pago"
-          value={reminders(reputation.averageReminders)}
+          label={t('reputation.remindersPerPayment')}
+          value={reminders(reputation.averageReminders, intlLocale)}
           backgroundColor={palette.primaryLight}
           color={palette.primary}
         />
       </View>
 
       <AppText variant="caption" color={palette.textMuted}>
-        Solo cuentan pagos confirmados vinculados a tu cuenta. El importe nunca afecta a tu nota.
+        {t('reputation.caveat')}
       </AppText>
     </Card>
   );

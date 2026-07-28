@@ -1,6 +1,7 @@
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { AppText, Card, LoadingSkeleton, ScreenContainer } from '@/components/ui';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { layout, radii, shadows, spacing } from '@/theme';
 
 type LoadingRegionProps = {
@@ -10,17 +11,13 @@ type LoadingRegionProps = {
   testID?: string;
 };
 
-export function LoadingRegion({
-  children,
-  label = 'Cargando contenido',
-  style,
-  testID,
-}: LoadingRegionProps) {
+export function LoadingRegion({ children, label, style, testID }: LoadingRegionProps) {
+  const { t } = useI18n();
   return (
     <View
       accessible
       accessibilityRole="progressbar"
-      accessibilityLabel={label}
+      accessibilityLabel={label ?? t('common.loading')}
       accessibilityState={{ busy: true }}
       testID={testID}
       style={style}
@@ -141,24 +138,22 @@ function MetricsSkeleton() {
 }
 
 function HomeDataShapes() {
+  const { t } = useI18n();
   return (
     <View style={styles.homeData}>
       <MetricsSkeleton />
-      <AppText variant="heading">Cobros recientes</AppText>
+      <AppText variant="heading">{t('home.recent')}</AppText>
       <SkeletonList count={2} rowHeight={78} />
     </View>
   );
 }
 
 export function HomeDataSkeleton() {
+  const { t } = useI18n();
   return (
-    <LoadingRegion
-      label="Cargando tu resumen y cobros"
-      testID="home-data-skeleton"
-      style={styles.homeData}
-    >
+    <LoadingRegion label={t('common.loading')} testID="home-data-skeleton" style={styles.homeData}>
       <MetricsSkeleton />
-      <AppText variant="heading">Cobros recientes</AppText>
+      <AppText variant="heading">{t('home.recent')}</AppText>
       <SkeletonList count={2} rowHeight={78} />
     </LoadingRegion>
   );
@@ -214,11 +209,12 @@ function SkeletonTabBar() {
 
 export function AppBootSkeleton({ showTabBar = true }: { showTabBar?: boolean }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   return (
     <View style={[styles.flex, { backgroundColor: palette.background }]}>
       <ScreenContainer contentContainerStyle={showTabBar ? styles.bootContent : undefined}>
         <LoadingRegion
-          label="Preparando Pagaste"
+          label={t('loading.preparingApp')}
           testID="app-boot-skeleton"
           style={styles.bootBody}
         >
@@ -231,9 +227,14 @@ export function AppBootSkeleton({ showTabBar = true }: { showTabBar?: boolean })
 }
 
 export function AuthScreenSkeleton() {
+  const { t } = useI18n();
   return (
     <ScreenContainer publicPage>
-      <LoadingRegion label="Comprobando tu sesión" testID="auth-skeleton" style={styles.authPage}>
+      <LoadingRegion
+        label={t('loading.checkingSession')}
+        testID="auth-skeleton"
+        style={styles.authPage}
+      >
         <View style={styles.authBrand}>
           <LoadingSkeleton width={64} height={64} borderRadius={20} />
           <SkeletonLine width={126} height={27} />
@@ -269,6 +270,10 @@ function AvatarStripSkeleton() {
 function TicketSkeleton() {
   return (
     <>
+      <View style={styles.ticketSelectorSkeleton}>
+        <LoadingSkeleton width={156} height={62} borderRadius={radii.lg} />
+        <LoadingSkeleton width={156} height={62} borderRadius={radii.lg} />
+      </View>
       <LoadingSkeleton height={390} borderRadius={radii.card} style={styles.ticket} />
       <View style={styles.centeredChip}>
         <LoadingSkeleton width={148} height={28} borderRadius={radii.pill} />
@@ -373,11 +378,7 @@ export function ScreenLoadingSkeleton({ variant }: { variant: ScreenLoadingVaria
         publicPage={variant === 'publicClaim'}
         contentContainerStyle={footer ? styles.detailContentWithFooter : undefined}
       >
-        <LoadingRegion
-          label="Cargando pantalla"
-          testID={`${variant}-skeleton`}
-          style={styles.detailBody}
-        >
+        <LoadingRegion testID={`${variant}-skeleton`} style={styles.detailBody}>
           {variant === 'publicClaim' ? null : <SkeletonHeader />}
           <VariantShapes variant={variant} />
         </LoadingRegion>
@@ -395,7 +396,7 @@ export function ListRowsSkeleton({
   rowHeight?: number;
 }) {
   return (
-    <LoadingRegion label="Cargando lista" style={styles.listLoading}>
+    <LoadingRegion style={styles.listLoading}>
       <SkeletonList count={count} rowHeight={rowHeight} />
     </LoadingRegion>
   );
@@ -514,6 +515,7 @@ const styles = StyleSheet.create({
   avatarStrip: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   avatarPerson: { flex: 1, alignItems: 'center', gap: spacing.sm },
   ticket: { width: '100%', maxHeight: 440, aspectRatio: 1.05, alignSelf: 'center' },
+  ticketSelectorSkeleton: { flexDirection: 'row', gap: spacing.sm, overflow: 'hidden' },
   centeredChip: { alignItems: 'center' },
   progressCard: { minHeight: 124, justifyContent: 'center' },
   publicBrand: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },

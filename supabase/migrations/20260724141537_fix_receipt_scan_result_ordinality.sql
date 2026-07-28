@@ -11,27 +11,50 @@ as $$
 declare
   v_total bigint;
   v_confidence numeric;
+  v_occurred_at timestamptz;
   v_items jsonb := p_result -> 'items';
 begin
-  if p_result is null
+  if p_job_id is null
+    or p_expense_id is null
+    or p_result is null
     or jsonb_typeof(p_result) <> 'object'
     or jsonb_typeof(v_items) <> 'array'
-    or jsonb_array_length(v_items) = 0
   then
+    raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
+  end if;
+  if jsonb_array_length(v_items) not between 1 and 300 then
+    raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
+  end if;
+  if p_result -> 'warnings' is not null
+    and jsonb_typeof(p_result -> 'warnings') <> 'array'
+  then
+    raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
+  end if;
+  if coalesce(jsonb_array_length(p_result -> 'warnings'), 0) > 30 then
     raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
   end if;
 
   begin
     v_total := (p_result ->> 'totalCents')::bigint;
     v_confidence := (p_result ->> 'confidence')::numeric;
+    v_occurred_at := nullif(p_result ->> 'occurredAt', '')::timestamptz;
   exception
-    when invalid_text_representation or numeric_value_out_of_range then
+    when invalid_text_representation
+      or numeric_value_out_of_range
+      or datetime_field_overflow then
       raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
   end;
 
-  if v_total <= 0
+  if v_total not between 1 and 9007199254740991
     or v_confidence not between 0 and 1
     or coalesce(p_result ->> 'currency', '') !~ '^[A-Z]{3}$'
+    or exists (
+      select 1
+      from jsonb_array_elements(coalesce(p_result -> 'warnings', '[]'::jsonb))
+        as warning(value)
+      where jsonb_typeof(warning.value) <> 'string'
+        or char_length(warning.value #>> '{}') > 200
+    )
   then
     raise exception using errcode = '22023', message = 'INVALID_OCR_RESULT';
   end if;
@@ -41,11 +64,24 @@ begin
     from jsonb_array_elements(v_items) as item(value)
     where jsonb_typeof(item.value) <> 'object'
       or char_length(trim(coalesce(item.value ->> 'name', ''))) not between 1 and 160
-      or coalesce(item.value ->> 'quantity', '') !~ '^[0-9]+([.][0-9]+)?$'
+      or coalesce(item.value ->> 'quantity', '')
+        !~ '^[0-9]{1,9}([.][0-9]{1,3})?$'
       or (item.value ->> 'quantity')::numeric <= 0
+      or case
+        when item.value -> 'unitPriceCents' is null
+          or jsonb_typeof(item.value -> 'unitPriceCents') = 'null'
+          then false
+        when coalesce(item.value ->> 'unitPriceCents', '') ~ '^-?[0-9]+$'
+          then (item.value ->> 'unitPriceCents')::numeric
+            not between -9007199254740991 and 9007199254740991
+        else true
+      end
       or coalesce(item.value ->> 'lineTotalCents', '') !~ '^-?[0-9]+$'
-      or (item.value ->> 'lineTotalCents')::bigint = 0
-      or coalesce(item.value ->> 'confidence', '') !~ '^(0([.][0-9]+)?|1([.]0+)?)$'
+      or (item.value ->> 'lineTotalCents')::numeric
+        not between -9007199254740991 and 9007199254740991
+      or (item.value ->> 'lineTotalCents')::numeric = 0
+      or coalesce(item.value ->> 'confidence', '')
+        !~ '^(0([.][0-9]{1,4})?|1([.]0{1,4})?)$'
   ) then
     raise exception using errcode = '22023', message = 'INVALID_OCR_ITEM';
   end if;
@@ -99,7 +135,7 @@ begin
   update public.expenses
   set
     merchant_name = nullif(left(p_result ->> 'merchantName', 120), ''),
-    occurred_at = coalesce(nullif(p_result ->> 'occurredAt', '')::timestamptz, occurred_at),
+    occurred_at = coalesce(v_occurred_at, occurred_at),
     currency = p_result ->> 'currency',
     total_cents = v_total,
     own_share_cents = v_total,

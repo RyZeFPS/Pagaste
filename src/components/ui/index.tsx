@@ -30,6 +30,7 @@ import { useAppColors } from '@/providers/theme-context';
 import { layout, radii, shadows, spacing, touchTarget, typography } from '@/theme';
 import { formatCentsExact } from '@/lib/money-format';
 import { useProfileAvatarUrl } from '@/lib/profile-avatar-url';
+import { useI18n } from '@/i18n';
 
 export function AppText({
   variant = 'body',
@@ -256,11 +257,11 @@ export const AppInput = forwardRef<
   );
 });
 
-function editableMoney(cents: number) {
+function editableMoney(cents: number, decimalSeparator = ',') {
   if (!cents) return '';
   const sign = cents < 0 ? '-' : '';
   const absolute = BigInt(cents < 0 ? -cents : cents);
-  return `${sign}${absolute / 100n},${String(absolute % 100n).padStart(2, '0')}`;
+  return `${sign}${absolute / 100n}${decimalSeparator}${String(absolute % 100n).padStart(2, '0')}`;
 }
 
 function parseMoneyInput(text: string, allowNegative: boolean): number | null {
@@ -296,21 +297,30 @@ export function MoneyInput({
   currency?: string;
   allowNegative?: boolean;
 }) {
-  const [draft, setDraft] = useState(() => editableMoney(valueCents));
+  const { intlLocale } = useI18n();
+  const decimalSeparator =
+    new Intl.NumberFormat(intlLocale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+      useGrouping: false,
+    })
+      .format(1.1)
+      .match(/[.,]/u)?.[0] ?? '.';
+  const [draft, setDraft] = useState(() => editableMoney(valueCents, decimalSeparator));
   const [focused, setFocused] = useState(false);
   return (
     <AppInput
       {...props}
       keyboardType={allowNegative ? 'numbers-and-punctuation' : 'decimal-pad'}
-      value={focused ? draft : editableMoney(valueCents)}
+      value={focused ? draft : editableMoney(valueCents, decimalSeparator)}
       onFocus={(event) => {
-        setDraft(editableMoney(valueCents));
+        setDraft(editableMoney(valueCents, decimalSeparator));
         setFocused(true);
         props.onFocus?.(event);
       }}
       onBlur={(event) => {
         setFocused(false);
-        setDraft(editableMoney(valueCents));
+        setDraft(editableMoney(valueCents, decimalSeparator));
         props.onBlur?.(event);
       }}
       onChangeText={(text) => {
@@ -583,7 +593,7 @@ export function EmptyState({
   );
 }
 export function ErrorState({
-  title = 'Algo no ha salido bien',
+  title,
   body,
   onRetry,
 }: {
@@ -591,12 +601,15 @@ export function ErrorState({
   body?: string;
   onRetry?: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <EmptyState
-      title={title}
+      title={title ?? t('common.error')}
       body={body}
       action={
-        onRetry ? <AppButton title="Reintentar" variant="secondary" onPress={onRetry} /> : undefined
+        onRetry ? (
+          <AppButton title={t('common.retry')} variant="secondary" onPress={onRetry} />
+        ) : undefined
       }
     />
   );
@@ -708,6 +721,7 @@ export function BottomSheet({
 }) {
   const palette = useAppColors();
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
   return (
     <Modal
       visible={visible}
@@ -719,7 +733,7 @@ export function BottomSheet({
       <View style={[styles.modalOverlay, { backgroundColor: palette.overlay }]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Cerrar"
+          accessibilityLabel={t('common.close')}
           style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
@@ -740,7 +754,7 @@ export function BottomSheet({
             <View style={[styles.sheetHandle, { backgroundColor: palette.disabled }]} />
             <View style={styles.sheetHeader}>
               <AppText variant="sectionTitle">{title}</AppText>
-              <AppButton title="Cerrar" variant="ghost" size="sm" onPress={onClose} />
+              <AppButton title={t('common.close')} variant="ghost" size="sm" onPress={onClose} />
             </View>
             <ScrollView
               style={styles.sheetContent}
@@ -760,7 +774,7 @@ export function ConfirmDialog({
   visible,
   title,
   body,
-  confirmLabel = 'Confirmar',
+  confirmLabel,
   destructive,
   onConfirm,
   onClose,
@@ -773,13 +787,14 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <BottomSheet visible={visible} onClose={onClose} title={title}>
       <AppText>{body}</AppText>
       <View style={styles.rowEnd}>
-        <AppButton title="Cancelar" variant="ghost" onPress={onClose} />
+        <AppButton title={t('common.cancel')} variant="ghost" onPress={onClose} />
         <AppButton
-          title={confirmLabel}
+          title={confirmLabel ?? t('common.confirm')}
           variant={destructive ? 'danger' : 'primary'}
           onPress={onConfirm}
         />
@@ -790,7 +805,7 @@ export function ConfirmDialog({
 export function CurrencyAmount({
   cents,
   currency = 'EUR',
-  locale = 'es-ES',
+  locale,
   variant = 'heading',
   color,
   tone,
@@ -804,9 +819,10 @@ export function CurrencyAmount({
   tone?: 'primary' | 'success' | 'warning' | 'danger' | 'secondary' | 'muted';
   style?: TextStyle;
 }) {
+  const { intlLocale } = useI18n();
   return (
     <AppText variant={variant} color={color} tone={tone} tabular style={style}>
-      {formatCentsExact(cents, currency, locale)}
+      {formatCentsExact(cents, currency, locale ?? intlLocale)}
     </AppText>
   );
 }

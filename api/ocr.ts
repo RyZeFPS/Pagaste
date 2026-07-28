@@ -44,8 +44,7 @@ function authorized(request: Request): boolean {
   const expectedBytes = Buffer.from(expected);
   const providedBytes = Buffer.from(provided);
   return (
-    expectedBytes.length === providedBytes.length &&
-    timingSafeEqual(expectedBytes, providedBytes)
+    expectedBytes.length === providedBytes.length && timingSafeEqual(expectedBytes, providedBytes)
   );
 }
 
@@ -92,7 +91,9 @@ export async function POST(request: Request): Promise<Response> {
     const recognition = await recognizeReceiptImage(image);
     const result = parseReceiptLines(recognition.lines, {
       currencyHint: input.currencyHint,
+      locale: input.locale,
       pageConfidence: recognition.confidence,
+      qualityWarnings: recognition.qualityWarnings,
     });
     return response(result, 200);
   } catch (error) {

@@ -4,6 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { merchantVisual, resolveMerchantBrand } from '@/lib/merchant-brand';
 import { MERCHANT_VECTOR_PATHS } from '@/lib/merchant-icon-data';
 import { MERCHANT_LOGO_ASSETS } from '@/lib/merchant-logo-assets';
+import { useI18n } from '@/i18n';
 
 export type MerchantLogoProps = {
   merchantName?: string | null;
@@ -15,13 +16,15 @@ export type MerchantLogoProps = {
 
 export function MerchantLogo({
   merchantName,
-  fallbackLabel = 'Comercio',
+  fallbackLabel,
   size = 44,
   style,
   decorative = true,
 }: MerchantLogoProps) {
+  const { t } = useI18n();
+  const resolvedFallbackLabel = fallbackLabel ?? t('common.merchant');
   const brand = resolveMerchantBrand(merchantName);
-  const visual = merchantVisual(merchantName, fallbackLabel);
+  const visual = merchantVisual(merchantName, resolvedFallbackLabel);
   const asset = brand ? MERCHANT_LOGO_ASSETS[brand.id] : undefined;
   const vectorPath = brand ? MERCHANT_VECTOR_PATHS[brand.id] : undefined;
   const mark = visual.monogram;
@@ -38,7 +41,9 @@ export function MerchantLogo({
     <View
       accessible={!decorative}
       accessibilityRole={decorative ? undefined : 'image'}
-      accessibilityLabel={decorative ? undefined : `Comercio ${visual.displayName}`}
+      accessibilityLabel={
+        decorative ? undefined : t('merchant.logoA11y', { name: visual.displayName })
+      }
       testID={brand ? `merchant-logo-${brand.id}` : 'merchant-logo-fallback'}
       style={[
         styles.container,

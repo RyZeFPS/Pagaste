@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,7 +7,8 @@ import { PageHeader } from '@/components/app-shell';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
-import { authErrorMessage, emailSchema } from '@/lib/auth-validation';
+import { authErrorMessage, createAuthValidationSchemas } from '@/lib/auth-validation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 type Form = { email: string };
@@ -16,6 +17,8 @@ export default function ForgotPasswordScreen() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { locale, t } = useI18n();
+  const { emailSchema } = useMemo(() => createAuthValidationSchemas(locale), [locale]);
   const params = useLocalSearchParams<{ email?: string | string[] }>();
   const initialEmail = typeof params.email === 'string' ? params.email : '';
   const [serverError, setServerError] = useState<string>();
@@ -42,14 +45,14 @@ export default function ForgotPasswordScreen() {
         params: { email: parsed.data.email, mode: 'reset' },
       });
     } catch (error) {
-      setServerError(authErrorMessage(error, 'password-reset'));
+      setServerError(authErrorMessage(error, 'password-reset', locale));
     }
   });
 
   return (
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
       <View style={styles.content}>
-        <PageHeader title="Recuperar contraseña" />
+        <PageHeader title={t('auth.recoveryHeader')} />
         <View
           accessible={false}
           importantForAccessibility="no"
@@ -66,12 +69,9 @@ export default function ForgotPasswordScreen() {
         <Card padding="spacious" style={styles.card}>
           <View style={styles.heading}>
             <AppText accessibilityRole="header" variant="screenTitle">
-              Crea una contraseña nueva
+              {t('auth.recoveryTitle')}
             </AppText>
-            <AppText color={palette.textSecondary}>
-              Te enviaremos un enlace seguro. Si tu cuenta venía del acceso por código, úsalo una
-              vez para establecer tu contraseña.
-            </AppText>
+            <AppText color={palette.textSecondary}>{t('auth.recoveryBody')}</AppText>
           </View>
 
           <Controller
@@ -81,8 +81,8 @@ export default function ForgotPasswordScreen() {
               <AppInput
                 ref={ref}
                 testID="forgot-email"
-                label="Correo electrónico"
-                placeholder="tu@correo.com"
+                label={t('auth.email')}
+                placeholder={t('auth.emailPlaceholder')}
                 keyboardType="email-address"
                 textContentType="emailAddress"
                 autoComplete="email"
@@ -117,7 +117,7 @@ export default function ForgotPasswordScreen() {
 
           <AppButton
             testID="forgot-submit"
-            title="Enviar enlace seguro"
+            title={t('auth.sendSecureLink')}
             size="lg"
             fullWidth
             loading={isSubmitting}

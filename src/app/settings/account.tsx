@@ -13,6 +13,7 @@ import {
 import { repository } from '@/lib/repository';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 export default function AccountScreen() {
@@ -26,6 +27,7 @@ function AccountContent() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { locale, t } = useI18n();
   const [name, setName] = useState(auth.profile?.display_name ?? '');
   const [paymentPhone, setPaymentPhone] = useState(auth.profile?.payment_phone_e164 ?? '');
   const [sharePaymentPhone, setSharePaymentPhone] = useState(
@@ -38,10 +40,11 @@ function AccountContent() {
   const [message, setMessage] = useState<string>();
   const expenses = useQuery({ queryKey: ['expenses'], queryFn: repository.listExpenses });
   const groups = useQuery({ queryKey: ['groups'], queryFn: repository.listGroups });
-  const messageIsSuccess = Boolean(message?.includes('guardados'));
+  const messageIsSuccess = message === t('account.saved');
+  const deleteKeyword = locale === 'en' ? 'DELETE' : 'ELIMINAR';
   return (
     <ScreenContainer>
-      <PageHeader title="Cuenta y datos" />
+      <PageHeader title={t('settings.accountTitle')} />
 
       <Card padding="spacious" style={styles.card}>
         <View style={styles.sectionHeading}>
@@ -49,15 +52,15 @@ function AccountContent() {
             <UserRound color={palette.primary} size={22} />
           </View>
           <View style={styles.flex}>
-            <AppText variant="sectionTitle">Tu perfil</AppText>
+            <AppText variant="sectionTitle">{t('account.profileTitle')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              La información que verán las personas con las que repartas gastos.
+              {t('account.profileBody')}
             </AppText>
           </View>
         </View>
         <View style={styles.fields}>
-          <AppInput label="Nombre visible" value={name} onChangeText={setName} />
-          <AppInput label="Correo" value={auth.user?.email ?? ''} editable={false} />
+          <AppInput label={t('account.name')} value={name} onChangeText={setName} />
+          <AppInput label={t('account.email')} value={auth.user?.email ?? ''} editable={false} />
         </View>
 
         <View style={[styles.paymentSection, { borderTopColor: palette.divider }]}>
@@ -66,15 +69,15 @@ function AccountContent() {
               <Phone color={palette.successInk} size={22} />
             </View>
             <View style={styles.flex}>
-              <AppText variant="sectionTitle">Teléfono para cobrar</AppText>
+              <AppText variant="sectionTitle">{t('account.phoneTitle')}</AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Añádelo solo si quieres facilitar un Bizum o una transferencia fuera de Pagaste.
+                {t('account.phoneBody')}
               </AppText>
             </View>
           </View>
           <AppInput
             testID="payment-phone"
-            label="Teléfono de cobro (opcional)"
+            label={t('account.phoneLabel')}
             placeholder="+34600111222"
             value={paymentPhone}
             onChangeText={(value) => {
@@ -86,7 +89,7 @@ function AccountContent() {
             autoComplete="tel"
             autoCorrect={false}
             error={phoneError}
-            hint="Formato internacional con prefijo de país."
+            hint={t('account.phoneHint')}
           />
           <View
             style={[
@@ -95,15 +98,14 @@ function AccountContent() {
             ]}
           >
             <View style={styles.consentCopy}>
-              <AppText variant="label">Mostrarlo en mis solicitudes</AppText>
+              <AppText variant="label">{t('account.sharePhone')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
-                Al activarlo autorizas que el número aparezca en cada enlace privado de cobro
-                mientras esta opción siga activa.
+                {t('account.sharePhoneBody')}
               </AppText>
             </View>
             <Switch
               testID="share-payment-phone"
-              accessibilityLabel="Mostrar mi teléfono en enlaces privados de cobro"
+              accessibilityLabel={t('account.sharePhoneA11y')}
               value={sharePaymentPhone}
               onValueChange={(value) => {
                 setMessage(undefined);
@@ -120,25 +122,24 @@ function AccountContent() {
             />
           </View>
           <AppText variant="caption" color={palette.textSecondary}>
-            Pagaste no inicia, procesa ni verifica el pago. Puedes retirar este permiso cuando
-            quieras.
+            {t('account.paymentDisclaimer')}
           </AppText>
         </View>
         <AppButton
-          title="Guardar cambios"
+          title={t('account.save')}
           size="lg"
           fullWidth
           loading={saving}
           onPress={async () => {
             if (name.trim().length < 2) {
-              setMessage('Escribe un nombre válido.');
+              setMessage(t('account.invalidName'));
               return;
             }
             const normalizedPhone = normalizePaymentPhoneE164(paymentPhone);
             const nextPhoneError = validatePaymentPhone(paymentPhone, sharePaymentPhone);
             if (nextPhoneError) {
               setPhoneError(nextPhoneError);
-              setMessage('Revisa el teléfono de cobro.');
+              setMessage(t('account.reviewPhone'));
               return;
             }
             setSaving(true);
@@ -150,9 +151,9 @@ function AccountContent() {
                 sharePaymentPhone: sharePaymentPhone && Boolean(normalizedPhone),
               });
               setPaymentPhone(normalizedPhone);
-              setMessage('Cambios guardados.');
+              setMessage(t('account.saved'));
             } catch {
-              setMessage('No se han podido guardar los cambios.');
+              setMessage(t('account.saveError'));
             } finally {
               setSaving(false);
             }
@@ -188,18 +189,15 @@ function AccountContent() {
             <Download color={palette.successInk} size={22} />
           </View>
           <View style={styles.flex}>
-            <AppText variant="sectionTitle">Exportar mis datos</AppText>
+            <AppText variant="sectionTitle">{t('account.exportTitle')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Conserva una copia legible de la información que tienes en Pagaste.
+              {t('account.exportBody')}
             </AppText>
           </View>
         </View>
-        <AppText color={palette.textSecondary}>
-          Genera un resumen local de tu perfil, gastos y grupos visibles. No incluye enlaces
-          privados ni imágenes del ticket.
-        </AppText>
+        <AppText color={palette.textSecondary}>{t('account.exportDescription')}</AppText>
         <AppButton
-          title="Exportar resumen"
+          title={t('account.exportAction')}
           variant="outline"
           size="lg"
           fullWidth
@@ -232,34 +230,30 @@ function AccountContent() {
           </View>
           <View style={styles.flex}>
             <AppText variant="sectionTitle" color={palette.dangerInk}>
-              Eliminar cuenta
+              {t('account.deleteTitle')}
             </AppText>
             <AppText variant="caption" color={palette.dangerInk}>
-              Acción irreversible
+              {t('account.irreversible')}
             </AppText>
           </View>
         </View>
-        <AppText color={palette.textPrimary}>
-          Esta acción es irreversible. Elimina tu perfil, tus grupos y gastos propios, las fotos de
-          tus tickets y tus tokens de notificación. En gastos compartidos de otras personas, tu
-          vínculo se anonimiza para no alterar sus cuentas.
-        </AppText>
+        <AppText color={palette.textPrimary}>{t('account.deleteBody')}</AppText>
         <AppInput
-          label="Escribe ELIMINAR para confirmar"
+          label={t('account.deleteConfirm', { keyword: deleteKeyword })}
           value={deleteConfirmation}
           onChangeText={setDeleteConfirmation}
           autoCapitalize="characters"
           autoCorrect={false}
         />
         <AppButton
-          title="Eliminar mi cuenta y datos"
+          title={t('account.deleteAction')}
           variant="danger"
           size="lg"
           fullWidth
-          disabled={deleteConfirmation !== 'ELIMINAR'}
+          disabled={deleteConfirmation !== deleteKeyword}
           loading={deleting}
           onPress={async () => {
-            if (deleteConfirmation !== 'ELIMINAR') return;
+            if (deleteConfirmation !== deleteKeyword) return;
             setDeleting(true);
             setMessage(undefined);
             try {
@@ -267,9 +261,7 @@ function AccountContent() {
               await auth.signOut().catch(() => undefined);
               router.replace('/(auth)/login');
             } catch {
-              setMessage(
-                'No se ha podido eliminar la cuenta. No repitas la acción hasta comprobar la conexión.',
-              );
+              setMessage(t('account.deleteError'));
               setDeleting(false);
             }
           }}

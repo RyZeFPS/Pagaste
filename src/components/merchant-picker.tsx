@@ -3,9 +3,15 @@ import { Check, ChevronRight } from 'lucide-react-native';
 import { Keyboard, Pressable, StyleSheet, View } from 'react-native';
 import { AppInput, AppText } from '@/components/ui';
 import { MerchantLogo } from '@/components/merchant-logo';
-import { MERCHANT_BRANDS, searchMerchantBrands, type MerchantBrand } from '@/lib/merchant-brand';
+import {
+  MERCHANT_BRANDS,
+  searchMerchantBrands,
+  type MerchantBrand,
+  type MerchantCategory,
+} from '@/lib/merchant-brand';
 import { useAppColors } from '@/providers/app-providers';
 import { radii, shadows, spacing } from '@/theme';
+import { useI18n, type TranslationKey } from '@/i18n';
 
 export type MerchantPickerProps = {
   value: string;
@@ -15,14 +21,24 @@ export type MerchantPickerProps = {
   testID?: string;
 };
 
+const merchantCategoryKeys: Record<MerchantCategory, TranslationKey> = {
+  Supermercado: 'merchant.category.supermarket',
+  Restauración: 'merchant.category.restaurant',
+  Delivery: 'merchant.category.delivery',
+  Gasolinera: 'merchant.category.petrolStation',
+  Tienda: 'merchant.category.shop',
+  Transporte: 'merchant.category.transport',
+};
+
 export function MerchantPicker({
   value,
   onChangeText,
-  label = 'Comercio (opcional)',
-  placeholder = 'Pizzería Bella Napoli',
+  label,
+  placeholder,
   testID = 'expense-merchant',
 }: MerchantPickerProps) {
   const palette = useAppColors();
+  const { t } = useI18n();
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focused, setFocused] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string>();
@@ -57,8 +73,8 @@ export function MerchantPicker({
     <View>
       <AppInput
         testID={testID}
-        label={label}
-        placeholder={placeholder}
+        label={label ?? t('merchant.optionalLabel')}
+        placeholder={placeholder ?? t('merchant.placeholder')}
         value={value}
         autoCorrect={false}
         autoCapitalize="words"
@@ -78,7 +94,7 @@ export function MerchantPicker({
 
       {showSuggestions ? (
         <View
-          accessibilityLabel="Sugerencias de comercios"
+          accessibilityLabel={t('merchant.suggestionsA11y')}
           style={[
             styles.suggestions,
             shadows.card,
@@ -86,14 +102,17 @@ export function MerchantPicker({
           ]}
         >
           <AppText variant="caption" color={palette.textSecondary} style={styles.heading}>
-            Comercios conocidos
+            {t('merchant.known')}
           </AppText>
           {suggestions.map((brand, index) => (
             <Pressable
               key={brand.id}
               testID={`merchant-suggestion-${brand.id}`}
               accessibilityRole="button"
-              accessibilityLabel={`Seleccionar ${brand.displayName}, ${brand.category}`}
+              accessibilityLabel={t('merchant.selectA11y', {
+                name: brand.displayName,
+                category: t(merchantCategoryKeys[brand.category]),
+              })}
               onPressIn={cancelBlur}
               onPress={() => selectBrand(brand)}
               style={({ pressed }) => [
@@ -106,7 +125,7 @@ export function MerchantPicker({
               <View style={styles.textColumn}>
                 <AppText variant="label">{brand.displayName}</AppText>
                 <AppText variant="caption" color={palette.textSecondary}>
-                  {brand.category}
+                  {t(merchantCategoryKeys[brand.category])}
                 </AppText>
               </View>
               <ChevronRight color={palette.textMuted} size={18} />
@@ -123,7 +142,7 @@ export function MerchantPicker({
           <MerchantLogo merchantName={selectedBrand.displayName} size={30} />
           <View style={styles.textColumn}>
             <AppText variant="caption" color={palette.primaryDark}>
-              {selectedBrand.displayName} · {selectedBrand.category}
+              {selectedBrand.displayName} · {t(merchantCategoryKeys[selectedBrand.category])}
             </AppText>
           </View>
           <Check color={palette.primary} size={17} strokeWidth={2.5} />

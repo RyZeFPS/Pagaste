@@ -5,21 +5,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
 import { GroupAvatarPicker } from '@/components/group-avatar-picker';
+import { useI18n } from '@/i18n';
 import { pickProcessedGroupAvatar } from '@/lib/group-avatar-image';
 import { repository } from '@/lib/repository';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
 import { radii, spacing } from '@/theme';
 
-const groupTypes = [
-  { value: 'friends', label: 'Amigos' },
-  { value: 'couple', label: 'Pareja' },
-  { value: 'household', label: 'Piso compartido' },
-  { value: 'trip', label: 'Viaje' },
-  { value: 'work', label: 'Trabajo' },
-  { value: 'family', label: 'Familia' },
-  { value: 'other', label: 'Otro' },
-];
+const groupTypes = ['friends', 'couple', 'household', 'trip', 'work', 'family', 'other'] as const;
 
 export default function NewGroupScreen() {
   return (
@@ -33,6 +26,7 @@ function NewGroupContent() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { t } = useI18n();
   const cache = useQueryClient();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -49,9 +43,7 @@ function NewGroupContent() {
       const nextUri = await pickProcessedGroupAvatar();
       if (nextUri) setAvatarUri(nextUri);
     } catch (cause) {
-      setPhotoError(
-        cause instanceof Error ? cause.message : 'No se ha podido preparar la foto del grupo.',
-      );
+      setPhotoError(cause instanceof Error ? cause.message : t('groups.avatarPrepareError'));
     } finally {
       setSelectingPhoto(false);
     }
@@ -60,8 +52,8 @@ function NewGroupContent() {
   const create = useMutation({
     mutationFn: async () => {
       setError(undefined);
-      if (!auth.user) throw new Error('Inicia sesión de nuevo.');
-      if (name.trim().length < 2) throw new Error('Escribe un nombre para el grupo.');
+      if (!auth.user) throw new Error(t('groups.authError'));
+      if (name.trim().length < 2) throw new Error(t('groups.nameError'));
       const group = await repository.createGroup(auth.user.id, {
         name: name.trim(),
         description: description.trim(),
@@ -89,21 +81,17 @@ function NewGroupContent() {
         },
       });
     },
-    onError: (cause) =>
-      setError(cause instanceof Error ? cause.message : 'No se ha podido crear el grupo.'),
+    onError: (cause) => setError(cause instanceof Error ? cause.message : t('groups.createError')),
   });
 
   return (
     <ScreenContainer>
       <View style={styles.screen}>
-        <PageHeader
-          title="Nuevo grupo"
-          subtitle="Reúne a las personas con las que compartes gastos a menudo."
-        />
+        <PageHeader title={t('groups.newTitle')} subtitle={t('groups.newSubtitle')} />
 
         <View style={styles.intro}>
           <GroupAvatarPicker
-            name={name.trim() || 'Nuevo grupo'}
+            name={name.trim() || t('groups.newAvatarName')}
             uri={avatarUri}
             size={84}
             busy={selectingPhoto || create.isPending}
@@ -111,7 +99,7 @@ function NewGroupContent() {
             onRemove={avatarUri ? () => setAvatarUri(undefined) : undefined}
           />
           <AppText variant="bodySmall" color={palette.textSecondary} style={styles.introText}>
-            Después podrás invitar a quien quieras mediante un enlace privado.
+            {t('groups.newInviteHint')}
           </AppText>
           {photoError ? (
             <View style={[styles.error, { backgroundColor: palette.dangerLight }]}>
@@ -124,16 +112,16 @@ function NewGroupContent() {
 
         <Card variant="elevated" padding="spacious" style={styles.formCard}>
           <AppInput
-            label="Nombre del grupo"
-            placeholder="Piso"
+            label={t('groups.name')}
+            placeholder={t('groups.namePlaceholder')}
             value={name}
             maxLength={60}
             autoFocus
             onChangeText={setName}
           />
           <AppInput
-            label="Descripción (opcional)"
-            placeholder="Gastos de casa y compras comunes"
+            label={t('groups.description')}
+            placeholder={t('groups.descriptionPlaceholder')}
             value={description}
             onChangeText={setDescription}
             multiline
@@ -144,20 +132,34 @@ function NewGroupContent() {
 
           <View style={styles.typeSection}>
             <View style={styles.typeHeading}>
-              <AppText variant="label">Tipo de grupo</AppText>
+              <AppText variant="label">{t('groups.type')}</AppText>
               <AppText variant="caption" color={palette.textSecondary}>
-                Solo sirve para organizarlo mejor.
+                {t('groups.typeHint')}
               </AppText>
             </View>
             <View style={styles.types}>
               {groupTypes.map((option) => (
                 <AppButton
-                  key={option.value}
-                  title={option.label}
+                  key={option}
+                  title={
+                    option === 'friends'
+                      ? t('groups.typeFriends')
+                      : option === 'couple'
+                        ? t('groups.typeCouple')
+                        : option === 'household'
+                          ? t('groups.typeHousehold')
+                          : option === 'trip'
+                            ? t('groups.typeTrip')
+                            : option === 'work'
+                              ? t('groups.typeWork')
+                              : option === 'family'
+                                ? t('groups.typeFamily')
+                                : t('groups.typeOther')
+                  }
                   size="sm"
-                  variant={type === option.value ? 'primary' : 'secondary'}
-                  accessibilityState={{ selected: type === option.value }}
-                  onPress={() => setType(option.value)}
+                  variant={type === option ? 'primary' : 'secondary'}
+                  accessibilityState={{ selected: type === option }}
+                  onPress={() => setType(option)}
                 />
               ))}
             </View>
@@ -165,7 +167,7 @@ function NewGroupContent() {
 
           <View style={[styles.currencyRow, { borderColor: palette.divider }]}>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              Moneda del grupo
+              {t('groups.currency')}
             </AppText>
             <AppText variant="label">{auth.profile?.default_currency || 'EUR'}</AppText>
           </View>
@@ -179,7 +181,7 @@ function NewGroupContent() {
           ) : null}
 
           <AppButton
-            title="Crear grupo"
+            title={t('groups.create')}
             size="lg"
             fullWidth
             loading={create.isPending}

@@ -14,6 +14,7 @@ const authenticatedFunctions = [
   'send-reminder',
   'request-payment-check',
   'revoke-claim',
+  'regenerate-claim-link',
   'create-group-invite',
   'accept-invite',
   'delete-account',
@@ -93,7 +94,7 @@ describe('Edge Function API contract', () => {
     expect(createClaims).toContain("eventType: 'claim_requested'");
     expect(createClaims).toContain('Promise.allSettled');
     expect(createClaims).toContain('EdgeRuntime');
-    expect(createClaims).toContain("route: '/settings/notifications'");
+    expect(createClaims).toContain("route: '/notifications'");
   });
 
   it('lets a debtor request a bank-check notification without confirming payment', () => {
@@ -101,7 +102,7 @@ describe('Edge Function API contract', () => {
     expect(paymentCheck).toContain("admin.rpc('request_claim_payment_check'");
     expect(paymentCheck).toContain('p_actor_user_id: user.id');
     expect(paymentCheck).toContain("eventType: 'payment_check_requested'");
-    expect(paymentCheck).toContain("route: '/settings/notifications'");
+    expect(paymentCheck).toContain("route: '/notifications'");
     expect(paymentCheck).toContain('sendPushToUser');
     expect(paymentCheck).not.toContain('marked_paid');
     expect(paymentCheck).not.toContain('update({ status:');
@@ -131,6 +132,8 @@ describe('Edge Function API contract', () => {
     expect(ocr).not.toContain('GEMINI_API_KEY');
     expect(ocr).not.toContain('EXPO_PUBLIC_OCR');
     expect(scanReceipt).toContain('.createSignedUrl(receiptPath, 120)');
+    expect(scanReceipt).toContain("'suggest_anonymous_ocr_corrections'");
+    expect(scanReceipt).toContain('p_ocr_texts: scanned.items.map');
   });
 
   it('removes private profile photos before deleting an account', () => {

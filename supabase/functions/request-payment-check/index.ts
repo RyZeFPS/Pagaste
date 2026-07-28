@@ -41,7 +41,7 @@ serve(async (req) => {
     title: 'Comprueba si ha llegado',
     body: `${result.debtorDisplayName} te pide revisar el ingreso de ${formatMoney(result.amountCents, result.currency)}${groupContext}.`,
     data: {
-      route: '/settings/notifications',
+      route: '/notifications',
       claimId: result.claimId,
       expenseId: result.expenseId,
     },

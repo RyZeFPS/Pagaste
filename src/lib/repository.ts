@@ -4,13 +4,22 @@ import { File } from 'expo-file-system';
 import { appUrl, getSupabase } from '@/lib/supabase/client';
 import { AppError } from '@/lib/api-error';
 import { sanitizePublicClaimDto } from '@/domain/public-claims';
+import type { PersonSuggestion } from '@/domain/person-suggestions';
+import type { CombinedReceiptResult } from '@/domain/multi-receipt';
+import type { ReceiptScanResult } from '@/types';
 import type {
   Claim,
   ClaimLink,
+  ClaimLinkActivity,
   AppNotification,
+  AppliedExpenseCollaboration,
+  ExpenseContribution,
+  ExpenseCollaborationOwnerPayload,
   Expense,
   ExpenseDetail,
   ExpenseItem,
+  ExpenseReceipt,
+  ExpenseSettlement,
   Group,
   GroupMember,
   GroupStreakCard,
@@ -18,7 +27,11 @@ import type {
   Participant,
   Profile,
   PublicClaim,
+  PublicExpenseCollaboration,
+  ReminderPreferences,
+  ReminderPreview,
   ReputationCard,
+  StartedExpenseCollaboration,
 } from '@/lib/models';
 
 function unwrap<T>(result: {
@@ -144,6 +157,50 @@ export const repository = {
       .single();
     return withProfileAvatarUrl(unwrap(result) as Profile);
   },
+  async reminderPreferences(userId: string): Promise<ReminderPreferences> {
+    const { data, error } = await getSupabase()
+      .from('reminder_preferences')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw new AppError(error.code, error.message);
+    return (
+      (data as ReminderPreferences | null) ?? {
+        user_id: userId,
+        enabled: true,
+        first_delay_hours: 24,
+        second_delay_days: 3,
+        quiet_start: '22:00:00',
+        quiet_end: '08:00:00',
+        message_tone: 'neutral',
+        group_same_debtor: true,
+      }
+    );
+  },
+  async saveReminderPreferences(
+    userId: string,
+    values: Partial<Omit<ReminderPreferences, 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<ReminderPreferences> {
+    const current = await repository.reminderPreferences(userId);
+    const result = await getSupabase()
+      .from('reminder_preferences')
+      .upsert(
+        {
+          user_id: userId,
+          enabled: values.enabled ?? current.enabled,
+          first_delay_hours: values.first_delay_hours ?? current.first_delay_hours,
+          second_delay_days: values.second_delay_days ?? current.second_delay_days,
+          quiet_start: values.quiet_start === undefined ? current.quiet_start : values.quiet_start,
+          quiet_end: values.quiet_end === undefined ? current.quiet_end : values.quiet_end,
+          message_tone: values.message_tone ?? current.message_tone,
+          group_same_debtor: values.group_same_debtor ?? current.group_same_debtor,
+        },
+        { onConflict: 'user_id' },
+      )
+      .select()
+      .single();
+    return unwrap(result) as ReminderPreferences;
+  },
   async uploadProfileAvatar(userId: string, uri: string): Promise<Profile> {
     const client = getSupabase();
     const current = unwrap(
@@ -243,27 +300,37 @@ export const repository = {
   },
   async expense(id: string): Promise<ExpenseDetail> {
     const client = getSupabase();
-    const [expense, items, participants, allocations, claims] = await Promise.all([
-      client.from('expenses').select('*').eq('id', id).single(),
-      client.from('expense_items').select('*').eq('expense_id', id).order('sort_order'),
-      client.from('expense_participants').select('*').eq('expense_id', id).order('sort_order'),
-      client
-        .from('item_allocations')
-        .select('*, expense_items!inner(expense_id)')
-        .eq('expense_items.expense_id', id),
-      client
-        .from('claims')
-        .select(
-          '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), disputes:claim_disputes(reason,message,status,created_at)',
-        )
-        .eq('expense_id', id)
-        .order('created_at'),
-    ]);
+    const [expense, receipts, items, participants, allocations, contributions, claims] =
+      await Promise.all([
+        client.from('expenses').select('*').eq('id', id).single(),
+        client
+          .from('expense_receipts')
+          .select('*')
+          .eq('expense_id', id)
+          .order('sort_order')
+          .order('created_at'),
+        client.from('expense_items').select('*').eq('expense_id', id).order('sort_order'),
+        client.from('expense_participants').select('*').eq('expense_id', id).order('sort_order'),
+        client
+          .from('item_allocations')
+          .select('*, expense_items!inner(expense_id)')
+          .eq('expense_items.expense_id', id),
+        client.from('expense_contributions').select('*').eq('expense_id', id).order('sort_order'),
+        client
+          .from('claims')
+          .select(
+            '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), disputes:claim_disputes(reason,message,status,created_at)',
+          )
+          .eq('expense_id', id)
+          .order('created_at'),
+      ]);
     return {
       ...(unwrap(expense) as Expense),
+      receipts: unwrap(receipts) as ExpenseReceipt[],
       items: unwrap(items) as ExpenseItem[],
       participants: unwrap(participants) as Participant[],
       allocations: unwrap(allocations) as ItemAllocation[],
+      contributions: unwrap(contributions) as ExpenseContribution[],
       claims: unwrap(claims) as Claim[],
     };
   },
@@ -353,13 +420,28 @@ export const repository = {
       .single();
     return unwrap(result) as ExpenseItem;
   },
+  async submitAnonymousOcrCorrection(itemId: string, correctedText: string): Promise<boolean> {
+    const { data, error } = await getSupabase().rpc('submit_anonymous_ocr_correction', {
+      p_item_id: itemId,
+      p_corrected_text: correctedText,
+    });
+    if (error) throw new AppError(error.code, error.message);
+    return data === true;
+  },
   async deleteItem(id: string): Promise<void> {
     const { error } = await getSupabase().from('expense_items').delete().eq('id', id);
     if (error) throw new AppError(error.code, error.message);
   },
   async addParticipant(
     expenseId: string,
-    input: { displayName: string; userId?: string; isPayer?: boolean },
+    input: {
+      displayName: string;
+      userId?: string;
+      email?: string;
+      phoneE164?: string;
+      avatarPath?: string;
+      isPayer?: boolean;
+    },
     sortOrder: number,
   ): Promise<Participant> {
     const result = await getSupabase()
@@ -368,12 +450,43 @@ export const repository = {
         expense_id: expenseId,
         user_id: input.userId ?? null,
         display_name: input.displayName,
+        email: input.email ?? null,
+        phone_e164: input.phoneE164 ?? null,
+        avatar_path: input.avatarPath ?? null,
         is_payer: input.isPayer ?? false,
         sort_order: sortOrder,
       })
       .select()
       .single();
     return unwrap(result) as Participant;
+  },
+  async listRecentPeople(userId: string): Promise<PersonSuggestion[]> {
+    const { data, error } = await getSupabase()
+      .from('expense_participants')
+      .select(
+        'id,user_id,display_name,avatar_path,email,phone_e164, expense:expenses!inner(id,created_by,occurred_at)',
+      )
+      .eq('expense.created_by', userId)
+      .neq('user_id', userId)
+      .order('occurred_at', { referencedTable: 'expenses', ascending: false })
+      .limit(120);
+    if (error) throw new AppError(error.code, error.message);
+    return (data ?? []).map((row) => {
+      const expense = Array.isArray(row.expense) ? row.expense[0] : row.expense;
+      return {
+        id: row.id,
+        displayName: row.display_name,
+        userId: row.user_id,
+        email: row.email,
+        phoneE164: row.phone_e164,
+        avatarPath: row.avatar_path,
+        lastSeenAt:
+          expense && typeof expense === 'object' && 'occurred_at' in expense
+            ? String(expense.occurred_at)
+            : null,
+        sources: ['recent'] as const,
+      };
+    });
   },
   async deleteParticipant(id: string): Promise<void> {
     const { error } = await getSupabase().from('expense_participants').delete().eq('id', id);
@@ -391,6 +504,70 @@ export const repository = {
       .from('item_allocations')
       .insert(values.map((value) => ({ ...value, item_id: itemId })));
     if (inserted.error) throw new AppError(inserted.error.code, inserted.error.message);
+  },
+  async saveExpenseContributions(
+    expenseId: string,
+    contributions: {
+      participantId: string;
+      amountCents: number;
+      method: ExpenseContribution['method'];
+    }[],
+  ): Promise<ExpenseContribution[]> {
+    const result = await getSupabase().rpc('save_expense_contributions', {
+      p_expense_id: expenseId,
+      p_contributions: contributions,
+    });
+    return unwrap(result) as ExpenseContribution[];
+  },
+  async previewExpenseSettlements(expenseId: string): Promise<ExpenseSettlement[]> {
+    const result = await getSupabase().rpc('preview_expense_settlements', {
+      p_expense_id: expenseId,
+    });
+    return unwrap(result) as ExpenseSettlement[];
+  },
+  async startExpenseCollaboration(
+    expenseId: string,
+    locale: 'es' | 'en',
+    expiresInHours = 24,
+  ): Promise<StartedExpenseCollaboration> {
+    return invoke<StartedExpenseCollaboration>('manage-expense-collaboration', {
+      action: 'start',
+      expenseId,
+      locale,
+      expiresInHours,
+    });
+  },
+  async expenseCollaboration(expenseId: string): Promise<ExpenseCollaborationOwnerPayload> {
+    return invoke<ExpenseCollaborationOwnerPayload>('manage-expense-collaboration', {
+      action: 'get',
+      expenseId,
+    });
+  },
+  async applyExpenseCollaboration(sessionId: string): Promise<AppliedExpenseCollaboration> {
+    return invoke<AppliedExpenseCollaboration>('manage-expense-collaboration', {
+      action: 'apply',
+      sessionId,
+    });
+  },
+  async revokeExpenseCollaboration(sessionId: string): Promise<void> {
+    await invoke<{ sessionId: string; status: 'revoked' }>('manage-expense-collaboration', {
+      action: 'revoke',
+      sessionId,
+    });
+  },
+  async publicExpenseCollaboration(token: string): Promise<PublicExpenseCollaboration> {
+    return invoke<PublicExpenseCollaboration>('get-public-expense-collaboration', { token });
+  },
+  async submitExpenseCollaboration(
+    token: string,
+    displayName: string,
+    itemIds: string[],
+  ): Promise<{ guestId: string; selectedCount: number }> {
+    return invoke<{ guestId: string; selectedCount: number }>('submit-expense-collaboration', {
+      token,
+      displayName,
+      itemIds,
+    });
   },
   async listGroups(): Promise<Group[]> {
     const result = await getSupabase()
@@ -508,25 +685,118 @@ export const repository = {
     await repository.updateExpense(expenseId, { receipt_path: path, scan_status: 'processing' });
     return path;
   },
-  scanReceipt(expenseId: string, receiptPath?: string) {
-    return invoke<{
-      jobId: string;
-      provider: string;
-      status: 'completed';
-      confidence: number;
-      warnings: string[];
-      merchantName: string | null;
-      currency: string;
-      totalCents: number;
-      items: {
-        name: string;
-        quantity: number;
-        unitPriceCents: number | null;
-        lineTotalCents: number;
-        category: string | null;
-        confidence: number;
-      }[];
-    }>('scan-receipt', { expenseId, receiptPath });
+  async uploadExpenseReceipt(
+    userId: string,
+    expenseId: string,
+    uri: string,
+    originalName?: string | null,
+  ): Promise<ExpenseReceipt> {
+    let bytes: ArrayBuffer;
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      if (!response.ok) throw new AppError('UPLOAD_READ_FAILED', 'No se ha podido leer la imagen.');
+      bytes = await response.arrayBuffer();
+    } else {
+      const file = new File(uri);
+      if (file.size > 10 * 1024 * 1024)
+        throw new AppError('RECEIPT_TOO_LARGE', 'La imagen supera el límite de 10 MB.');
+      bytes = await file.arrayBuffer();
+    }
+    if (bytes.byteLength > 10 * 1024 * 1024)
+      throw new AppError('RECEIPT_TOO_LARGE', 'La imagen supera el límite de 10 MB.');
+
+    const client = getSupabase();
+    const path = `${userId}/${expenseId}/${Crypto.randomUUID()}.jpg`;
+    const previous = await client
+      .from('expense_receipts')
+      .select('sort_order')
+      .eq('expense_id', expenseId)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (previous.error) throw new AppError(previous.error.code, previous.error.message);
+    const sortOrder = Number(previous.data?.sort_order ?? -1) + 1;
+    const uploaded = await client.storage
+      .from('receipts')
+      .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
+    if (uploaded.error) throw new AppError('UPLOAD_FAILED', uploaded.error.message);
+    const inserted = await client
+      .from('expense_receipts')
+      .insert({
+        expense_id: expenseId,
+        storage_path: path,
+        mime_type: 'image/jpeg',
+        original_name: originalName?.trim() || null,
+        sort_order: sortOrder,
+        status: 'queued',
+      })
+      .select()
+      .single();
+    if (inserted.error) {
+      await client.storage.from('receipts').remove([path]);
+      throw new AppError(inserted.error.code, inserted.error.message);
+    }
+    return inserted.data as ExpenseReceipt;
+  },
+  async updateExpenseReceipt(
+    receiptId: string,
+    input: Partial<
+      Pick<
+        ExpenseReceipt,
+        'status' | 'scan_job_id' | 'merchant_name' | 'total_cents' | 'confidence' | 'error_code'
+      >
+    >,
+  ): Promise<ExpenseReceipt> {
+    const result = await getSupabase()
+      .from('expense_receipts')
+      .update(input)
+      .eq('id', receiptId)
+      .select()
+      .single();
+    return unwrap(result) as ExpenseReceipt;
+  },
+  async removeExpenseReceipt(receiptId: string): Promise<void> {
+    const client = getSupabase();
+    const record = await client
+      .from('expense_receipts')
+      .select('storage_path')
+      .eq('id', receiptId)
+      .single();
+    const receipt = unwrap(record) as Pick<ExpenseReceipt, 'storage_path'>;
+    const removedRow = await client.from('expense_receipts').delete().eq('id', receiptId);
+    if (removedRow.error) throw new AppError(removedRow.error.code, removedRow.error.message);
+    await client.storage.from('receipts').remove([receipt.storage_path]);
+  },
+  scanReceipt(
+    expenseId: string,
+    receiptPath?: string,
+    options?: { persistResult?: boolean; locale?: string; currencyHint?: string },
+  ) {
+    return invoke<
+      ReceiptScanResult & {
+        jobId: string;
+        provider: string;
+        status: 'completed';
+      }
+    >('scan-receipt', {
+      expenseId,
+      receiptPath,
+      persistResult: options?.persistResult,
+      locale: options?.locale,
+      currencyHint: options?.currencyHint,
+    });
+  },
+  async applyMultiReceiptResult(
+    expenseId: string,
+    receiptIds: string[],
+    result: CombinedReceiptResult,
+  ): Promise<void> {
+    const applied = await getSupabase().rpc('apply_multi_receipt_result', {
+      p_expense_id: expenseId,
+      p_receipt_ids: receiptIds,
+      p_result: result,
+    });
+    if (applied.error) throw new AppError(applied.error.code, applied.error.message);
   },
   async latestReceiptScan(expenseId: string): Promise<{
     provider: string;
@@ -555,9 +825,8 @@ export const repository = {
   },
   createClaimLinks(
     expenseId: string,
-    claims: { debtorParticipantId: string; amountCents: number }[],
-  ): Promise<{ claims: ClaimLink[] }> {
-    return invoke('create-claim-links', { expenseId, claims });
+  ): Promise<{ claims: ClaimLink[]; status?: 'sent' | 'settled' }> {
+    return invoke('create-claim-links', { expenseId });
   },
   async publicClaim(token: string): Promise<PublicClaim> {
     return sanitizePublicClaimDto(await invoke<unknown>('get-public-claim', { token }));
@@ -588,11 +857,21 @@ export const repository = {
       resolvedAt: string;
     }>('resolve-dispute', { claimId, outcome, resolutionNote });
   },
-  sendReminder(claimId: string) {
-    return invoke<{ claimId: string; reminderCount: number; message: string; shareUrl: string }>(
-      'send-reminder',
-      { claimId },
-    );
+  async previewReminder(claimId: string): Promise<ReminderPreview> {
+    const result = await getSupabase().rpc('preview_claim_reminder', { p_claim_id: claimId });
+    return unwrap(result) as ReminderPreview;
+  },
+  sendReminder(claimId: string, bankChecked: true) {
+    return invoke<{
+      claimId: string;
+      claimIds: string[];
+      reminderCount: number;
+      message: string;
+      shareUrl: string;
+      shareUrls: string[];
+      grouped: boolean;
+      preparedAt: string;
+    }>('send-reminder', { claimId, bankChecked });
   },
   requestPaymentCheck(claimId: string) {
     return invoke<{
@@ -607,6 +886,18 @@ export const repository = {
     return invoke<{ claimId: string; status: 'cancelled'; cancelledAt: string }>('revoke-claim', {
       claimId,
     });
+  },
+  regenerateClaimLink(claimId: string, expiresInDays = 30) {
+    return invoke<{ claimId: string; expiresAt: string; url: string }>('regenerate-claim-link', {
+      claimId,
+      expiresInDays,
+    });
+  },
+  async claimLinkActivity(claimId: string) {
+    const result = await getSupabase().rpc('get_claim_link_activity', {
+      p_claim_id: claimId,
+    });
+    return unwrap(result) as ClaimLinkActivity;
   },
   async acceptInvite(token: string) {
     return invoke<{ groupId: string }>('accept-invite', { token });

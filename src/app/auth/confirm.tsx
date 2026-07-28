@@ -7,6 +7,7 @@ import { getSafeInviteRedirect } from '@/lib/navigation';
 import { getSupabase } from '@/lib/supabase/client';
 import { useAppColors } from '@/providers/app-providers';
 import { useAuth } from '@/providers/auth-provider';
+import { useI18n } from '@/i18n';
 import { spacing } from '@/theme';
 
 type ConfirmationType = 'email' | 'recovery';
@@ -19,6 +20,7 @@ export default function ConfirmAuthEmailScreen() {
   const auth = useAuth();
   const { completePasswordRecovery } = auth;
   const palette = useAppColors();
+  const { t } = useI18n();
   const router = useRouter();
   const params = useLocalSearchParams<{
     token_hash?: string | string[];
@@ -30,7 +32,7 @@ export default function ConfirmAuthEmailScreen() {
     rawType === 'email' || rawType === 'recovery' ? rawType : undefined;
   const invalidLink = !tokenHash || tokenHash.length > 512 || !type;
   const [verificationError, setVerificationError] = useState<string>();
-  const error = invalidLink ? 'El enlace no es válido o está incompleto.' : verificationError;
+  const error = invalidLink ? t('auth.callbackInvalid') : verificationError;
 
   useEffect(() => {
     let active = true;
@@ -51,7 +53,7 @@ export default function ConfirmAuthEmailScreen() {
         });
         if (!active) return;
         if (authError || !data.session) {
-          setVerificationError('El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo.');
+          setVerificationError(t('auth.callbackExpired'));
           return;
         }
 
@@ -61,7 +63,7 @@ export default function ConfirmAuthEmailScreen() {
         );
       } catch {
         if (active) {
-          setVerificationError('No hemos podido comprobar el enlace. Inténtalo de nuevo.');
+          setVerificationError(t('auth.callbackFailed'));
         }
       }
     })();
@@ -69,7 +71,7 @@ export default function ConfirmAuthEmailScreen() {
     return () => {
       active = false;
     };
-  }, [completePasswordRecovery, router, tokenHash, type]);
+  }, [completePasswordRecovery, router, t, tokenHash, type]);
 
   return (
     <ScreenContainer publicPage contentContainerStyle={styles.screen}>
@@ -90,7 +92,7 @@ export default function ConfirmAuthEmailScreen() {
 
         <View style={styles.copy}>
           <AppText accessibilityRole="header" variant="screenTitle" style={styles.center}>
-            {error ? 'No se pudo abrir el enlace' : 'Comprobando tu correo'}
+            {t(error ? 'auth.callbackErrorTitle' : 'auth.callbackCheckingTitle')}
           </AppText>
           <AppText
             accessibilityRole={error ? 'alert' : undefined}
@@ -98,13 +100,13 @@ export default function ConfirmAuthEmailScreen() {
             color={error ? palette.dangerInk : palette.textSecondary}
             style={styles.center}
           >
-            {error ?? 'Estamos verificando este enlace seguro de un solo uso.'}
+            {error ?? t('auth.callbackCheckingBody')}
           </AppText>
         </View>
 
         {error ? (
           <AppButton
-            title={type === 'recovery' ? 'Solicitar otro enlace' : 'Volver a iniciar sesión'}
+            title={t(type === 'recovery' ? 'auth.requestNewLink' : 'auth.backToLogin')}
             size="lg"
             fullWidth
             onPress={() =>
@@ -113,7 +115,7 @@ export default function ConfirmAuthEmailScreen() {
           />
         ) : (
           <ActivityIndicator
-            accessibilityLabel="Verificando enlace"
+            accessibilityLabel={t('auth.callbackCheckingA11y')}
             color={palette.primary}
             size="large"
           />

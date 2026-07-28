@@ -1,21 +1,10 @@
 import { z } from 'zod';
+import { translate } from '@/i18n/core';
+import type { Locale } from '@/i18n/translations';
 
 export const AUTH_EMAIL_MAX_LENGTH = 254;
 export const AUTH_PASSWORD_MIN_LENGTH = 8;
 export const AUTH_PASSWORD_MAX_LENGTH = 128;
-
-const email = z
-  .string()
-  .trim()
-  .min(1, 'Introduce tu correo electrónico.')
-  .max(AUTH_EMAIL_MAX_LENGTH, 'El correo es demasiado largo.')
-  .email('Introduce un correo válido.')
-  .transform((value) => value.toLowerCase());
-
-const loginPassword = z
-  .string()
-  .min(1, 'Introduce tu contraseña.')
-  .max(AUTH_PASSWORD_MAX_LENGTH, 'La contraseña es demasiado larga.');
 
 export const passwordChecks = (password: string) => ({
   length: password.length >= AUTH_PASSWORD_MIN_LENGTH,
@@ -24,58 +13,76 @@ export const passwordChecks = (password: string) => ({
   number: /\p{N}/u.test(password),
 });
 
-export const strongPassword = z
-  .string()
-  .min(AUTH_PASSWORD_MIN_LENGTH, `Usa al menos ${AUTH_PASSWORD_MIN_LENGTH} caracteres.`)
-  .max(AUTH_PASSWORD_MAX_LENGTH, 'La contraseña es demasiado larga.')
-  .refine((value) => passwordChecks(value).lowercase, 'Añade una letra minúscula.')
-  .refine((value) => passwordChecks(value).uppercase, 'Añade una letra mayúscula.')
-  .refine((value) => passwordChecks(value).number, 'Añade un número.');
+export function createAuthValidationSchemas(locale: Locale) {
+  const message = (
+    key: Parameters<typeof translate>[1],
+    values?: Parameters<typeof translate>[2],
+  ) => translate(locale, key, values);
 
-export const loginSchema = z.object({
-  email,
-  password: loginPassword,
-});
+  const email = z
+    .string()
+    .trim()
+    .min(1, message('auth.validationEmailRequired'))
+    .max(AUTH_EMAIL_MAX_LENGTH, message('auth.validationEmailTooLong'))
+    .email(message('auth.validationEmailInvalid'))
+    .transform((value) => value.toLowerCase());
 
-export const signUpSchema = z
-  .object({
-    email,
-    password: strongPassword,
-    passwordConfirmation: z.string().min(1, 'Repite tu contraseña.'),
-  })
-  .superRefine(({ password, passwordConfirmation }, context) => {
-    if (password !== passwordConfirmation) {
-      context.addIssue({
-        code: 'custom',
-        path: ['passwordConfirmation'],
-        message: 'Las contraseñas no coinciden.',
-      });
-    }
-  });
+  const loginPassword = z
+    .string()
+    .min(1, message('auth.validationPasswordRequired'))
+    .max(AUTH_PASSWORD_MAX_LENGTH, message('auth.validationPasswordTooLong'));
 
-export const resetPasswordSchema = z
-  .object({
-    password: strongPassword,
-    passwordConfirmation: z.string().min(1, 'Repite tu contraseña.'),
-  })
-  .superRefine(({ password, passwordConfirmation }, context) => {
-    if (password !== passwordConfirmation) {
-      context.addIssue({
-        code: 'custom',
-        path: ['passwordConfirmation'],
-        message: 'Las contraseñas no coinciden.',
-      });
-    }
-  });
+  const strongPassword = z
+    .string()
+    .min(
+      AUTH_PASSWORD_MIN_LENGTH,
+      message('auth.validationPasswordMin', { count: AUTH_PASSWORD_MIN_LENGTH }),
+    )
+    .max(AUTH_PASSWORD_MAX_LENGTH, message('auth.validationPasswordTooLong'))
+    .refine((value) => passwordChecks(value).lowercase, message('auth.validationPasswordLowercase'))
+    .refine((value) => passwordChecks(value).uppercase, message('auth.validationPasswordUppercase'))
+    .refine((value) => passwordChecks(value).number, message('auth.validationPasswordNumber'));
 
-export const emailSchema = z.object({ email });
+  const passwordPair = z
+    .object({
+      password: strongPassword,
+      passwordConfirmation: z.string().min(1, message('auth.validationPasswordRepeat')),
+    })
+    .superRefine(({ password, passwordConfirmation }, context) => {
+      if (password !== passwordConfirmation) {
+        context.addIssue({
+          code: 'custom',
+          path: ['passwordConfirmation'],
+          message: message('auth.validationPasswordMismatch'),
+        });
+      }
+    });
 
-export const displayNameSchema = z
-  .string()
-  .trim()
-  .min(2, 'Escribe al menos 2 caracteres.')
-  .max(60, 'El nombre no puede superar 60 caracteres.')
-  .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), 'El nombre contiene caracteres no válidos.');
+  return {
+    emailSchema: z.object({ email }),
+    loginSchema: z.object({ email, password: loginPassword }),
+    signUpSchema: passwordPair.safeExtend({ email }),
+    resetPasswordSchema: passwordPair,
+    strongPassword,
+    displayNameSchema: z
+      .string()
+      .trim()
+      .min(2, message('auth.validationNameMin'))
+      .max(60, message('auth.validationNameMax'))
+      .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), message('auth.validationNameInvalid')),
+  };
+}
+
+const spanishSchemas = createAuthValidationSchemas('es');
+
+export const {
+  displayNameSchema,
+  emailSchema,
+  loginSchema,
+  resetPasswordSchema,
+  signUpSchema,
+  strongPassword,
+} = spanishSchemas;
 
 export type AuthAction = 'login' | 'signup' | 'password-reset' | 'password-update';
 
@@ -85,45 +92,47 @@ type ErrorLike = {
   status?: unknown;
 };
 
-export function authErrorMessage(error: unknown, action: AuthAction): string {
+export function authErrorMessage(
+  error: unknown,
+  action: AuthAction,
+  locale: Locale = 'es',
+): string {
   const candidate = (typeof error === 'object' && error ? error : {}) as ErrorLike;
   const code = typeof candidate.code === 'string' ? candidate.code : '';
   const status = typeof candidate.status === 'number' ? candidate.status : undefined;
+  const message = (key: Parameters<typeof translate>[1]) => translate(locale, key);
 
-  if (code === 'invalid_credentials') return 'El correo o la contraseña no son correctos.';
+  if (code === 'invalid_credentials') return message('auth.errorInvalidCredentials');
   if (code === 'email_not_confirmed') {
-    return 'Confirma tu correo antes de iniciar sesión.';
+    return message('auth.errorEmailNotConfirmed');
   }
   if (code === 'weak_password') {
-    return 'La contraseña no cumple los requisitos de seguridad.';
+    return message('auth.errorWeakPassword');
   }
-  if (code === 'same_password') return 'Elige una contraseña diferente a la anterior.';
-  if (code === 'signup_disabled') return 'El registro no está disponible en este momento.';
-  if (code === 'captcha_failed') return 'No hemos podido completar la comprobación de seguridad.';
+  if (code === 'same_password') return message('auth.errorSamePassword');
+  if (code === 'signup_disabled') return message('auth.errorSignUpDisabled');
+  if (code === 'captcha_failed') return message('auth.errorCaptcha');
   if (
     code === 'over_email_send_rate_limit' ||
     code === 'over_request_rate_limit' ||
     code === 'request_timeout' ||
     status === 429
   ) {
-    return 'Has realizado demasiados intentos. Espera unos minutos antes de volver a probar.';
+    return message('auth.errorRateLimit');
   }
-  if (code === 'email_address_invalid') return 'Introduce un correo válido.';
+  if (code === 'email_address_invalid') return message('auth.validationEmailInvalid');
   if (code === 'email_address_not_authorized') {
-    return 'El servicio de correo todavía no está preparado para enviar a esta dirección.';
+    return message('auth.errorEmailUnauthorized');
   }
   if (code === 'user_already_exists' && action === 'signup') {
-    return 'No hemos podido crear la cuenta. Prueba a iniciar sesión o recuperar la contraseña.';
+    return message('auth.errorUserExists');
   }
   if (code === 'session_expired' || code === 'session_not_found') {
-    return 'El enlace ha caducado. Solicita uno nuevo.';
+    return message('auth.errorSessionExpired');
   }
 
-  if (action === 'login')
-    return 'No hemos podido iniciar sesión. Revisa los datos e inténtalo de nuevo.';
-  if (action === 'signup') return 'No hemos podido crear la cuenta. Inténtalo de nuevo.';
-  if (action === 'password-reset') {
-    return 'No hemos podido enviar las instrucciones. Inténtalo de nuevo más tarde.';
-  }
-  return 'No hemos podido guardar la nueva contraseña. Solicita otro enlace.';
+  if (action === 'login') return message('auth.errorLogin');
+  if (action === 'signup') return message('auth.errorSignUp');
+  if (action === 'password-reset') return message('auth.errorPasswordReset');
+  return message('auth.errorPasswordUpdate');
 }

@@ -30,16 +30,6 @@ import { useAuth } from '@/providers/auth-provider';
 import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
-const groupTypeLabels: Record<string, string> = {
-  friends: 'Amigos',
-  household: 'Piso compartido',
-  couple: 'Pareja',
-  trip: 'Viaje',
-  work: 'Trabajo',
-  family: 'Familia',
-  other: 'Grupo compartido',
-};
-
 type GroupDetail = Awaited<ReturnType<typeof repository.group>>;
 
 const enter = (delay: number) =>
@@ -62,15 +52,13 @@ function GroupContent() {
   const auth = useAuth();
   const palette = useAppColors();
   const cache = useQueryClient();
-  const { formatMoney, formatDate } = useI18n();
+  const { formatMoney, formatDate, t } = useI18n();
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState<string>();
   const [showInvite, setShowInvite] = useState(false);
   const [selectingPhoto, setSelectingPhoto] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState<string | undefined>(() =>
-    avatarUploadFailed === '1'
-      ? 'El grupo se ha creado, pero no hemos podido subir la foto. Puedes intentarlo de nuevo.'
-      : undefined,
+    avatarUploadFailed === '1' ? t('groups.avatarCreatedError') : undefined,
   );
   const query = useQuery({
     queryKey: ['group', groupId],
@@ -106,9 +94,7 @@ function GroupContent() {
       applyAvatarResult(group);
     },
     onError: (cause) =>
-      setAvatarMessage(
-        cause instanceof Error ? cause.message : 'No se ha podido guardar la foto del grupo.',
-      ),
+      setAvatarMessage(cause instanceof Error ? cause.message : t('groups.avatarSaveError')),
   });
   const removeAvatar = useMutation({
     mutationFn: () => repository.removeGroupAvatar(groupId),
@@ -117,22 +103,18 @@ function GroupContent() {
       applyAvatarResult(group);
     },
     onError: (cause) =>
-      setAvatarMessage(
-        cause instanceof Error ? cause.message : 'No se ha podido quitar la foto del grupo.',
-      ),
+      setAvatarMessage(cause instanceof Error ? cause.message : t('groups.avatarRemoveError')),
   });
   const invite = useMutation({
     mutationFn: () => repository.createGroupInvite(groupId, inviteEmail || undefined),
     onSuccess: async (result) => {
-      setInviteMessage(`Invitación válida hasta ${formatDate(result.expiresAt)}.`);
+      setInviteMessage(t('groups.inviteValidUntil', { date: formatDate(result.expiresAt) }));
       await Share.share({
-        message: `Te invito a mi grupo de Pagaste. Abre este enlace privado: ${result.url}`,
+        message: t('groups.inviteShare', { url: result.url }),
       });
     },
     onError: (cause) =>
-      setInviteMessage(
-        cause instanceof Error ? cause.message : 'No se ha podido crear la invitación.',
-      ),
+      setInviteMessage(cause instanceof Error ? cause.message : t('groups.inviteError')),
   });
 
   const pickAvatar = async () => {
@@ -143,9 +125,7 @@ function GroupContent() {
       const uri = await pickProcessedGroupAvatar();
       if (uri) uploadAvatar.mutate(uri);
     } catch (cause) {
-      setAvatarMessage(
-        cause instanceof Error ? cause.message : 'No se ha podido preparar la foto del grupo.',
-      );
+      setAvatarMessage(cause instanceof Error ? cause.message : t('groups.avatarPrepareError'));
     } finally {
       setSelectingPhoto(false);
     }
@@ -159,11 +139,11 @@ function GroupContent() {
     return (
       <ScreenContainer>
         <View style={styles.screen}>
-          <PageHeader title="Grupo" />
+          <PageHeader title={t('groups.groupFallbackTitle')} />
           <Card variant="grouped">
             <ErrorState
-              title="No hemos encontrado este grupo"
-              body="Puede que ya no tengas acceso."
+              title={t('groups.notFound')}
+              body={t('groups.notFoundBody')}
               onRetry={() => void query.refetch()}
             />
           </Card>
@@ -172,7 +152,21 @@ function GroupContent() {
     );
 
   const { group, members, expenses } = query.data;
-  const typeLabel = groupTypeLabels[group.type.toLowerCase()] || 'Grupo compartido';
+  const groupType = group.type.toLowerCase();
+  const typeLabel =
+    groupType === 'friends'
+      ? t('groups.typeFriends')
+      : groupType === 'household'
+        ? t('groups.typeHousehold')
+        : groupType === 'couple'
+          ? t('groups.typeCouple')
+          : groupType === 'trip'
+            ? t('groups.typeTrip')
+            : groupType === 'work'
+              ? t('groups.typeWork')
+              : groupType === 'family'
+                ? t('groups.typeFamily')
+                : t('groups.typeShared');
   const canEditAvatar = auth.user?.id === group.owner_id;
   const avatarBusy = selectingPhoto || uploadAvatar.isPending || removeAvatar.isPending;
 
@@ -202,7 +196,10 @@ function GroupContent() {
                 {group.name}
               </AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                {members.length} {members.length === 1 ? 'persona' : 'personas'} · {group.currency}
+                {t(members.length === 1 ? 'groups.memberSingular' : 'groups.memberPlural', {
+                  count: members.length,
+                })}{' '}
+                · {group.currency}
               </AppText>
               <AvatarGroup people={members.map((member) => ({ name: member.display_name }))} />
             </View>
@@ -216,22 +213,22 @@ function GroupContent() {
           ) : null}
           <View style={styles.expenseActions}>
             <View style={styles.expenseActionsCopy}>
-              <AppText variant="heading">Añadir gasto</AppText>
+              <AppText variant="heading">{t('groups.addExpense')}</AppText>
               <AppText variant="bodySmall" color={palette.textSecondary}>
-                Escanea el ticket o introduce el total a mano.
+                {t('groups.addExpenseBody')}
               </AppText>
             </View>
             <AppButton
-              title="Escanear ticket"
-              accessibilityLabel={`Escanear ticket para ${group.name}`}
+              title={t('groups.scan')}
+              accessibilityLabel={t('groups.scanFor', { name: group.name })}
               size="lg"
               fullWidth
               leftIcon={<Camera color={palette.white} size={21} strokeWidth={2.2} />}
               onPress={() => openNewExpense('scan')}
             />
             <AppButton
-              title="Añadir manualmente"
-              accessibilityLabel={`Añadir gasto manualmente para ${group.name}`}
+              title={t('groups.addManual')}
+              accessibilityLabel={t('groups.addManualFor', { name: group.name })}
               variant="outline"
               size="md"
               fullWidth
@@ -255,13 +252,13 @@ function GroupContent() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <AppText variant="sectionTitle">Personas</AppText>
+            <AppText variant="sectionTitle">{t('groups.people')}</AppText>
             <View style={styles.memberHeaderActions}>
               <AppText variant="bodySmall" color={palette.textMuted}>
                 {members.length}
               </AppText>
               <IconButton
-                label="Invitar a alguien"
+                label={t('groups.inviteSomeone')}
                 variant="soft"
                 size={38}
                 icon={<UserPlus color={palette.primary} size={19} strokeWidth={2} />}
@@ -274,13 +271,13 @@ function GroupContent() {
           </View>
           <Card variant="grouped">
             {members.map((member, index) => {
-              const role = member.role === 'owner' ? 'Administrador' : 'Miembro';
-              const status = member.status === 'active' ? role : 'Invitación pendiente';
+              const role = member.role === 'owner' ? t('groups.roleOwner') : t('groups.roleMember');
+              const status = member.status === 'active' ? role : t('groups.invitePending');
               const reputation = member.user_id ? reputations.data?.[member.user_id] : undefined;
               const reputationLabel = reputation?.score
                 ? `${reputation.score}/100`
                 : reputation
-                  ? 'Nuevo'
+                  ? t('groups.reputationNew')
                   : null;
               return (
                 <View key={member.id}>
@@ -296,7 +293,9 @@ function GroupContent() {
                     </View>
                     {member.status === 'active' && reputationLabel ? (
                       <View
-                        accessibilityLabel={`Reputación ${reputationLabel}`}
+                        accessibilityLabel={t('groups.reputationLabel', {
+                          value: reputationLabel,
+                        })}
                         style={[styles.reputationBadge, { backgroundColor: palette.primaryLight }]}
                       >
                         <AppText variant="caption" color={palette.primary} tabular>
@@ -321,7 +320,9 @@ function GroupContent() {
                             member.status === 'active' ? palette.successInk : palette.warningInk
                           }
                         >
-                          {member.status === 'active' ? 'Activo' : 'Pendiente'}
+                          {member.status === 'active'
+                            ? t('groups.memberActive')
+                            : t('groups.memberPending')}
                         </AppText>
                       </View>
                     )}
@@ -335,7 +336,7 @@ function GroupContent() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <AppText variant="sectionTitle">Gastos del grupo</AppText>
+            <AppText variant="sectionTitle">{t('groups.expenses')}</AppText>
             <AppText variant="bodySmall" color={palette.textMuted}>
               {expenses.length}
             </AppText>
@@ -346,17 +347,17 @@ function GroupContent() {
                 <ReceiptText color={palette.primary} size={26} strokeWidth={1.8} />
               </View>
               <EmptyState
-                title="Aún no hay gastos"
-                body="Crea el primero para empezar a repartir con el grupo."
+                title={t('groups.noExpensesTitle')}
+                body={t('groups.noExpensesBody')}
                 action={
                   <View style={styles.emptyExpenseActions}>
                     <AppButton
-                      title="Escanear primer ticket"
+                      title={t('groups.scanFirst')}
                       leftIcon={<Camera color={palette.white} size={19} />}
                       onPress={() => openNewExpense('scan')}
                     />
                     <AppButton
-                      title="Añadir manualmente"
+                      title={t('groups.addManual')}
                       variant="ghost"
                       onPress={() => openNewExpense('manual')}
                     />
@@ -369,12 +370,12 @@ function GroupContent() {
               {expenses.map((expense, index) => {
                 const status =
                   expense.status === 'settled'
-                    ? { label: 'Pagado', color: palette.successInk }
+                    ? { label: t('groups.statusPaid'), color: palette.successInk }
                     : expense.status === 'sent'
-                      ? { label: 'Enviado', color: palette.primary }
+                      ? { label: t('groups.statusSent'), color: palette.primary }
                       : expense.status === 'cancelled'
-                        ? { label: 'Cancelado', color: palette.dangerInk }
-                        : { label: 'Borrador', color: palette.warningInk };
+                        ? { label: t('groups.statusCancelled'), color: palette.dangerInk }
+                        : { label: t('groups.statusDraft'), color: palette.warningInk };
                 return (
                   <View key={expense.id}>
                     <Pressable
@@ -421,19 +422,19 @@ function GroupContent() {
       <BottomSheet
         visible={showInvite}
         onClose={() => setShowInvite(false)}
-        title="Invitar al grupo"
+        title={t('groups.invite')}
       >
         <View style={styles.inviteSheetIntro}>
           <View style={[styles.inviteIcon, { backgroundColor: palette.primaryLight }]}>
             <UserPlus color={palette.primary} size={21} strokeWidth={1.9} />
           </View>
           <AppText variant="bodySmall" color={palette.textSecondary} style={styles.memberCopy}>
-            Escribe su correo o déjalo vacío para compartir directamente el enlace privado.
+            {t('groups.inviteBody')}
           </AppText>
         </View>
         <AppInput
-          label="Correo de la invitación (opcional)"
-          placeholder="persona@correo.com"
+          label={t('groups.inviteEmail')}
+          placeholder={t('groups.inviteEmailPlaceholder')}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -441,7 +442,7 @@ function GroupContent() {
           onChangeText={setInviteEmail}
         />
         <AppButton
-          title="Crear y compartir invitación"
+          title={t('groups.inviteAction')}
           fullWidth
           loading={invite.isPending}
           onPress={() => invite.mutate()}

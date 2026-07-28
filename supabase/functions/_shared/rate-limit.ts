@@ -14,7 +14,12 @@ function clientAddress(req: Request): string {
 export async function enforceRateLimit(
   admin: SupabaseClient,
   req: Request,
-  endpoint: 'get-public-claim' | 'dispute-claim' | 'accept-invite',
+  endpoint:
+    | 'get-public-claim'
+    | 'dispute-claim'
+    | 'accept-invite'
+    | 'get-expense-collaboration'
+    | 'submit-expense-collaboration',
   limit: number,
   windowSeconds: number,
 ): Promise<void> {

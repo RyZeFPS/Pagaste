@@ -1,4 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js';
+import { getCalendars } from 'expo-localization';
 import {
   createContext,
   useCallback,
@@ -12,6 +13,8 @@ import { repository } from '@/lib/repository';
 import { appUrl, supabase, supabaseConfigured } from '@/lib/supabase/client';
 import { buildAuthEmailRedirect } from '@/lib/supabase/auth-redirect';
 import { getSafeInviteRedirect } from '@/lib/navigation';
+import { buildAuthUserMetadata, normalizeAuthTimeZone } from '@/lib/auth-metadata';
+import { normalizeLocale, toIntlLocale, useI18n } from '@/i18n';
 import type { Profile } from '@/lib/models';
 
 type SaveProfileValues = {
@@ -47,7 +50,26 @@ type AuthValue = {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+function deviceTimeZone(): string | undefined {
+  let calendarTimeZone: string | null | undefined;
+  try {
+    calendarTimeZone = getCalendars()[0]?.timeZone;
+  } catch {
+    calendarTimeZone = undefined;
+  }
+
+  const fromCalendar = normalizeAuthTimeZone(calendarTimeZone);
+  if (fromCalendar) return fromCalendar;
+
+  try {
+    return normalizeAuthTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return undefined;
+  }
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
+  const { locale: activeLocale } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
@@ -178,22 +200,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signUpWithPassword: async (email, password, options) => {
         if (!supabase) throw new Error('SUPABASE_NOT_CONFIGURED');
         const pendingNext = getSafeInviteRedirect(options?.next);
-        const directPath = pendingNext
-          ? `/onboarding?next=${encodeURIComponent(pendingNext)}`
-          : '/onboarding';
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: buildAuthEmailRedirect({
               appUrl,
-              path: directPath,
+              path: '/auth/confirm',
             }),
-            data: {
-              locale: 'es-ES',
-              timezone: 'Europe/Madrid',
-              ...(pendingNext ? { pending_next: pendingNext } : undefined),
-            },
+            data: buildAuthUserMetadata({
+              locale: activeLocale,
+              timezone: deviceTimeZone(),
+              pendingNext,
+            }),
           },
         });
         if (error) throw error;
@@ -204,7 +223,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: buildAuthEmailRedirect({
             appUrl,
-            path: '/reset-password',
+            path: '/auth/confirm',
           }),
         });
         if (error) throw error;
@@ -218,14 +237,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       saveProfile: async ({
         displayName,
-        locale = 'es-ES',
+        locale: profileLocale = toIntlLocale(activeLocale),
         paymentPhoneE164,
         sharePaymentPhone,
       }) => {
         if (!session) throw new Error('AUTH_REQUIRED');
         const saved = await repository.saveProfile(session.user.id, {
           display_name: displayName,
-          locale,
+          locale: profileLocale,
           ...(paymentPhoneE164 !== undefined
             ? { payment_phone_e164: paymentPhoneE164 }
             : undefined),
@@ -233,14 +252,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
             ? { share_payment_phone: sharePaymentPhone }
             : undefined),
         });
+        if (supabase) {
+          const { error } = await supabase.auth.updateUser({
+            data: buildAuthUserMetadata({
+              locale: normalizeLocale(profileLocale),
+              timezone: deviceTimeZone(),
+            }),
+          });
+          if (error) throw error;
+        }
         setProfile(saved);
       },
       completeOnboarding: async (displayName) => {
         if (!session) throw new Error('AUTH_REQUIRED');
         const saved = await repository.saveProfile(session.user.id, {
           display_name: displayName,
+          locale: toIntlLocale(activeLocale),
           onboarding_completed: true,
         });
+        if (supabase) {
+          const { error } = await supabase.auth.updateUser({
+            data: buildAuthUserMetadata({
+              locale: activeLocale,
+              timezone: deviceTimeZone(),
+            }),
+          });
+          if (error) throw error;
+        }
         setProfile(saved);
       },
       uploadProfileAvatar: async (uri) => {
@@ -256,7 +294,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (supabase) await supabase.auth.signOut();
       },
     }),
-    [completePasswordRecovery, loading, passwordRecovery, profile, session],
+    [activeLocale, completePasswordRecovery, loading, passwordRecovery, profile, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

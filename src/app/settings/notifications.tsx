@@ -18,6 +18,7 @@ import {
 } from '@/lib/notification-presentation';
 import { useNotificationCenter } from '@/providers/notification-center-provider';
 import { useAppColors } from '@/providers/app-providers';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
 export default function NotificationsScreen() {
@@ -30,6 +31,7 @@ export default function NotificationsScreen() {
 
 function NotificationsContent() {
   const palette = useAppColors();
+  const { locale, t } = useI18n();
   const { notifications, isLoading, markAllSeen } = useNotificationCenter();
 
   useEffect(() => {
@@ -39,10 +41,10 @@ function NotificationsContent() {
   return (
     <ScreenContainer>
       <PageHeader
-        title="Notificaciones"
+        title={t('notifications.title')}
         action={
           <IconButton
-            label="Ajustes de notificaciones"
+            label={t('notifications.settings')}
             variant="plain"
             icon={<Settings2 color={palette.textPrimary} size={22} />}
             onPress={() => router.push('/settings/notification-preferences' as Href)}
@@ -61,15 +63,12 @@ function NotificationsContent() {
           <View style={[styles.emptyIcon, { backgroundColor: palette.primaryLight }]}>
             <BellRing color={palette.primary} size={26} />
           </View>
-          <EmptyState
-            title="No tienes notificaciones"
-            body="Las solicitudes de pago y los avisos para revisar ingresos aparecerán aquí."
-          />
+          <EmptyState title={t('notifications.emptyTitle')} body={t('notifications.emptyBody')} />
         </Card>
       ) : (
         <View style={styles.list}>
           {notifications.map((item) => {
-            const presentation = getNotificationPresentation(item);
+            const presentation = getNotificationPresentation(item, locale);
             return (
               <Pressable
                 key={item.id}
@@ -87,7 +86,7 @@ function NotificationsContent() {
               >
                 {!item.read_at ? (
                   <View
-                    accessibilityLabel="Sin ver"
+                    accessibilityLabel={t('notifications.unread')}
                     style={[styles.unreadDot, { backgroundColor: palette.danger }]}
                   />
                 ) : null}
@@ -98,7 +97,7 @@ function NotificationsContent() {
                     {presentation.body}
                   </AppText>
                   <AppText color={palette.primary} style={styles.amount}>
-                    {formatNotificationMoney(item)}
+                    {formatNotificationMoney(item, locale)}
                   </AppText>
                 </View>
                 <ChevronRight color={palette.textMuted} size={20} />

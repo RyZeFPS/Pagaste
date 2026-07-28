@@ -9,22 +9,28 @@ Pagaste no procesa dinero ni se integra con Bizum o con bancos. El invitado paga
 El repositorio contiene un MVP funcional para iOS, Android y web con Expo Router, un backend Supabase versionado y pruebas automatizadas del dominio monetario y de los recorridos principales. Incluye:
 
 - registro, acceso y recuperación mediante correo y contraseña con confirmación de correo;
-- alta manual de gastos y captura/selección de tickets;
-- OCR reproducible con proveedor `mock` y adaptador HTTP configurable;
-- revisión de líneas, cantidades y reparto por persona;
+- alta manual ágil con reparto igual por defecto, varios pagadores y aportaciones parciales;
+- captura, galería e importación de varios tickets o pedidos digitales en una misma sesión;
+- OCR local gratuito basado en Tesseract, con proveedor `mock` y adaptador HTTP configurables;
+- revisión por ticket, confianza por línea, avisos de calidad y conciliación matemática explicada;
+- productos manuales, gastos comunes, descuentos y asignación por persona;
+- repetición real de gastos conservando comercio, grupo, participantes, productos y reparto;
 - enlaces privados para cobrar sin exigir cuenta al invitado;
-- registro manual de cobros recibidos por el receptor, recordatorios y resolución de disputas;
-- grupos e invitaciones autenticadas;
+- enlaces revocables, regenerables, con caducidad y actividad reciente;
+- registro manual de cobros recibidos por el receptor, recordatorios configurables y resolución de disputas;
+- búsqueda y filtros de actividad, agrupación de deudas por persona y exportación CSV, PDF, Excel y resumen visual;
+- grupos, invitaciones autenticadas y reparto colaborativo opcional mediante QR;
 - fotos privadas de grupo con recorte y compresión en el dispositivo;
 - perfil con reputación y racha basadas en cuándo el receptor registra cada cobro como recibido;
 - teléfono de cobro opcional, visible en enlaces privados solo con consentimiento expreso;
 - catálogo local de comercios para reconocer el historial sin peticiones a terceros;
 - notificaciones push nativas opt-in;
-- exportación local de un resumen de los datos visibles;
+- aprendizaje anónimo y opcional de correcciones OCR, sin conservar el ticket ni identificar al usuario;
+- interfaz y comunicaciones completas en español e inglés;
 - eliminación de cuenta mediante una Edge Function autenticada;
 - pantallas públicas de privacidad y condiciones de uso.
 
-El código de despliegue está preparado, pero este repositorio no demuestra que las migraciones, funciones, secretos o ajustes de Auth se hayan aplicado a un proyecto Supabase alojado. Tampoco implica QA en dispositivos físicos ni publicación en tiendas.
+El código de despliegue está preparado y las migraciones y Edge Functions se mantienen versionadas. La configuración operativa de Auth, SMTP, secretos y dominios debe verificarse por entorno; el repositorio no sustituye ese registro ni implica QA en dispositivos físicos o publicación en tiendas.
 
 ## Arquitectura
 
@@ -115,6 +121,11 @@ Toda variable con `EXPO_PUBLIC_` se incorpora al bundle y debe considerarse púb
 | `OCR_API_URL`               | Endpoint del proveedor OCR HTTP.                                                                           |
 | `OCR_API_KEY`               | Credencial privada del proveedor OCR.                                                                      |
 | `TOKEN_HASH_SECRET`         | Secreto aleatorio, distinto por entorno, de al menos 32 bytes UTF-8.                                       |
+
+Cuando `OCR_API_URL` apunta a la función propia `https://<dominio>/api/ocr`, configura en Vercel
+`OCR_INTERNAL_KEY` con exactamente el mismo valor secreto que `OCR_API_KEY` en Supabase. La API
+rechaza otros orígenes de imagen y solo descarga URLs firmadas breves del bucket privado
+`receipts`.
 
 La resolución de claves del backend prioriza los overrides singulares, después los mapas JSON modernos inyectados por Supabase y, por último, las variables legacy. Las claves modernas y legacy pueden coexistir durante la migración; consulta [Environment Variables](https://supabase.com/docs/guides/functions/secrets) y [Migrating to publishable and secret API keys](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys).
 
@@ -295,15 +306,21 @@ Por defecto:
 OCR_PROVIDER=mock
 ```
 
-El mock solo sustituye el servicio OCR externo, no la base de datos. Para un proveedor real:
+El mock solo sustituye el servicio OCR, no la base de datos. Para usar el lector gratuito incluido
+en el despliegue web:
 
 ```env
 OCR_PROVIDER=http
-OCR_API_URL=https://proveedor.example/v1/receipt
-OCR_API_KEY=...
+OCR_API_URL=https://<dominio-pagaste>/api/ocr
+OCR_API_KEY=<mismo valor que OCR_INTERNAL_KEY en Vercel>
 ```
 
-El adaptador envía una URL firmada breve desde la Edge Function, exige JSON estructurado, valida con Zod, normaliza céntimos y guarda únicamente el resultado necesario. La interfaz obliga a revisar y corregir el ticket antes de repartir. Cada proveedor real requiere mapear y probar su contrato, además de revisar retención y condiciones de privacidad.
+La API usa Sharp para rotar, normalizar contraste y nitidez y limitar imágenes largas antes de
+ejecutar Tesseract en español. El adaptador envía una URL firmada breve desde la Edge Function,
+exige JSON estructurado, valida con Zod, normaliza céntimos y guarda únicamente el resultado
+necesario. La interfaz muestra avisos de luz, enfoque y confianza, permite revisar cada línea y
+explica cualquier diferencia antes de repartir. El lector sigue siendo OCR clásico: no garantiza
+la precisión de un modelo comercial y siempre requiere confirmación humana.
 
 ## Seguridad y privacidad
 
@@ -338,27 +355,41 @@ El job `database` levanta un Supabase local reducido, aplica migraciones y seed,
 
 - No procesa ni verifica pagos, no abre un deep link bancario inventado, no lee notificaciones
   bancarias y no confirma Bizum automáticamente.
-- No se han desplegado ni validado de extremo a extremo las migraciones, Edge Functions, secretos, Auth, SMTP o Storage en un proyecto alojado desde este repositorio.
+- Las migraciones y Edge Functions pueden validarse y desplegarse desde este repositorio, pero Auth,
+  SMTP, dominios, secretos y Storage requieren comprobación operativa en cada entorno.
 - Playwright usa un contrato Supabase simulado; falta una suite de integración/smoke contra staging real.
 - La cámara, notificaciones push, Secure Store, enlaces universales/App Links y comportamiento offline requieren QA en dispositivos físicos y builds firmados.
 - Apple Team ID y la huella Android de release siguen siendo placeholders; también faltan credenciales operativas de dominio, tiendas, SMTP, push y OCR.
-- El OCR HTTP es un contrato genérico; no hay un proveedor real validado.
+- El OCR incluido usa Tesseract y requiere revisión humana. Todavía no hay recorte automático de
+  perspectiva ni implementación OCR nativa específica para iOS y Android.
+- La importación actual admite cámara, galería, capturas y texto de pedidos digitales; todavía no
+  extrae directamente páginas de un PDF ni recibe contenido mediante extensiones Share nativas.
+- El modo QR colaborativo actualiza mediante sondeo breve; todavía no usa Realtime ni permite que
+  un invitado edite una selección ya enviada.
 - La eliminación de cuenta está implementada en UI y backend, pero debe desplegarse y ensayarse en staging, incluidos fallos parciales entre Storage, base de datos y Auth.
-- La exportación actual es un resumen local de perfil, gastos y grupos visibles; no es una exportación legal completa ni incluye tickets. Las exportaciones avanzadas siguen reservadas para Plus.
-- Pagaste Plus es una pantalla informativa: no hay compras, facturación ni recordatorios automáticos operativos.
+- Las exportaciones CSV, PDF, Excel y visuales contienen la actividad visible, pero no constituyen
+  una exportación legal completa ni incluyen las imágenes privadas de los tickets.
+- Pagaste Plus es una pantalla informativa: todavía no hay compras ni facturación. Los
+  recordatorios configurables siempre requieren comprobar el banco y confirmar manualmente el
+  envío; no se ejecutan solos.
 - Apple y Google Auth permanecen desactivados hasta añadir credenciales y revisar sus callbacks.
-- Catalán e inglés tienen cobertura parcial; la persistencia y revisión lingüística necesitan completarse.
+- Español e inglés son los únicos idiomas admitidos. Los diccionarios son estrictos, pero las nuevas
+  pantallas deben mantener la revisión lingüística y de accesibilidad antes de producción.
 - Los textos legales y `legal@pagaste.app` necesitan revisión y datos definitivos del responsable antes de producción.
 - Las cabeceras web mantienen `noindex`; la indexación pública no está habilitada.
 
 ## Próximos pasos técnicos
 
-1. Desplegar en Supabase staging, configurar Auth/SMTP manualmente y ejecutar Security/Performance Advisors.
-2. Probar el backend real con dos usuarios y enlaces invitados pendientes, recibidos, disputados, resueltos, revocados e inválidos.
-3. Ensayar exportación y eliminación de cuenta en staging, documentando recuperación ante fallos parciales.
-4. Conectar un proveedor OCR con contrato, precisión, coste y retención revisados.
+1. Mantener un entorno staging separado y comprobar Auth/SMTP, secretos y Security/Performance
+   Advisors antes de cada release.
+2. Probar el backend real con dos usuarios y enlaces invitados pendientes, recibidos, disputados,
+   resueltos, revocados e inválidos.
+3. Ensayar exportación y eliminación de cuenta en staging, documentando recuperación ante fallos
+   parciales.
+4. Comparar el OCR Tesseract con una implementación nativa y, si fuese necesario, con un proveedor
+   comercial con precisión, coste y retención revisados.
 5. Completar Team ID, huellas, EAS project ID, credenciales push y pruebas de universal links en dispositivos físicos.
-6. Completar traducciones, revisión legal, accesibilidad y monitorización sin PII.
+6. Mantener revisión lingüística ES/EN, revisión legal, accesibilidad y monitorización sin PII.
 7. Diseñar y validar compras, límites y recordatorios antes de habilitar Pagaste Plus.
 
 ## Licencia

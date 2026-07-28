@@ -3,18 +3,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type PropsWithChildren,
 } from 'react';
-import { translations, type Locale, type TranslationKey } from './translations';
+import type { Locale, TranslationKey } from './translations';
+import { normalizeLocale, toIntlLocale, translate, type TranslationValues } from './core';
 import { formatCentsExact } from '@/lib/money-format';
 
-type Values = Record<string, string | number>;
 type I18nContextValue = {
   locale: Locale;
+  intlLocale: string;
   setLocale: (locale: Locale) => void;
-  t: (key: TranslationKey, values?: Values) => string;
+  t: (key: TranslationKey, values?: TranslationValues) => string;
   formatMoney: (cents: number, currency?: string) => string;
   formatDate: (iso: string) => string;
 };
@@ -22,26 +24,23 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 function initialLocale(): Locale {
-  const code = getLocales()[0]?.languageCode;
-  return code === 'ca' || code === 'en' ? code : 'es';
+  return normalizeLocale(getLocales()[0]?.languageCode);
 }
 
 export function I18nProvider({ children }: PropsWithChildren) {
   const [locale, setLocale] = useState<Locale>(initialLocale);
-  const intlLocale = locale === 'ca' ? 'ca-ES' : locale === 'en' ? 'en-GB' : 'es-ES';
+  const intlLocale = toIntlLocale(locale);
   const t = useCallback(
-    (key: TranslationKey, values?: Values) => {
-      const template = translations[locale][key] ?? translations.es[key];
-      return Object.entries(values ?? {}).reduce(
-        (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
-        template,
-      );
-    },
+    (key: TranslationKey, values?: TranslationValues) => translate(locale, key, values),
     [locale],
   );
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.documentElement.lang = locale;
+  }, [locale]);
   const value = useMemo<I18nContextValue>(
     () => ({
       locale,
+      intlLocale,
       setLocale,
       t,
       formatMoney: (cents, currency = 'EUR') => formatCentsExact(cents, currency, intlLocale),
@@ -62,3 +61,6 @@ export function useI18n() {
   if (!context) throw new Error('useI18n must be used inside I18nProvider');
   return context;
 }
+
+export { normalizeLocale, supportedLocales, toIntlLocale, translate } from './core';
+export type { Locale, TranslationKey } from './translations';

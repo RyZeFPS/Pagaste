@@ -83,7 +83,7 @@ class MockReceiptOcrProvider implements ReceiptOcrProvider {
         lineTotalCents: amount,
         confidence: 0.94,
       })),
-      warnings: ['Revisa siempre el ticket antes de repartir.'],
+      warnings: ['review_before_split'],
     });
   }
 }
@@ -118,7 +118,11 @@ class HttpReceiptOcrProvider implements ReceiptOcrProvider {
           422,
         );
       }
-      throw new ApiError('OCR_PROVIDER_ERROR', 'El lector de tickets no respondió correctamente.', 502);
+      throw new ApiError(
+        'OCR_PROVIDER_ERROR',
+        'El lector de tickets no respondió correctamente.',
+        502,
+      );
     }
     return receiptScanResultSchema.parse(await response.json());
   }

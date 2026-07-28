@@ -35,7 +35,7 @@ function ShareContent() {
   const { expenseId } = useLocalSearchParams<{ expenseId: string }>();
   const router = useRouter();
   const palette = useAppColors();
-  const { formatMoney } = useI18n();
+  const { formatMoney, t } = useI18n();
   const [links, setLinks] = useState<ClaimLink[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string>();
@@ -54,37 +54,34 @@ function ShareContent() {
   if (query.isError || !query.data)
     return (
       <ScreenContainer>
-        <ErrorState
-          body="No hemos podido cargar las solicitudes."
-          onRetry={() => void query.refetch()}
-        />
+        <ErrorState body={t('share.loadError')} onRetry={() => void query.refetch()} />
       </ScreenContainer>
     );
 
   return (
     <ScreenContainer contentContainerStyle={styles.screenContent}>
-      <PageHeader title="Solicitudes listas" />
+      <PageHeader title={t('expense.shareTitle')} />
 
       <View style={styles.successHero}>
         <View style={[styles.successIcon, { backgroundColor: palette.successLight }]}>
           <CheckCircle2 color={palette.success} size={38} strokeWidth={2} />
         </View>
         <AppText variant="screenTitle" style={styles.centerText}>
-          Reparto completado
+          {t('share.successTitle')}
         </AppText>
         <AppText color={palette.textSecondary} style={styles.centerText}>
-          Comparte cada enlace únicamente con la persona correspondiente.
+          {t('share.successBody')}
         </AppText>
       </View>
 
       {!links?.length ? (
         <Card>
           <EmptyState
-            title="Los enlaces ya no están en este dispositivo"
-            body="Por seguridad, solo aparecen al crearlos. El estado de los cobros sigue disponible."
+            title={t('share.linksMissingTitle')}
+            body={t('share.linksMissingBody')}
             action={
               <AppButton
-                title="Ver estado"
+                title={t('share.viewStatus')}
                 onPress={() => router.replace(`/expense/${expenseId}/status`)}
               />
             }
@@ -93,17 +90,24 @@ function ShareContent() {
       ) : (
         <View style={styles.linksSection}>
           <View style={styles.sectionHeading}>
-            <AppText variant="heading">Enlaces privados</AppText>
+            <AppText variant="heading">{t('share.privateLinks')}</AppText>
             <AppText variant="bodySmall" color={palette.textSecondary}>
-              {links.length} {links.length === 1 ? 'solicitud' : 'solicitudes'}
+              {t(links.length === 1 ? 'share.requestOne' : 'share.requestMany', {
+                count: links.length,
+              })}
             </AppText>
           </View>
           {links.map((link) => {
             const participant = query.data.participants.find(
               (value) => value.id === link.debtorParticipantId,
             );
-            const name = participant?.display_name ?? 'Participante';
-            const message = `${name}, esta es tu parte de “${query.data.title}”: ${formatMoney(link.amountCents, query.data.currency)}. Revísala aquí: ${link.url}`;
+            const name = participant?.display_name ?? t('share.participant');
+            const message = t('share.message', {
+              name,
+              title: query.data.title,
+              amount: formatMoney(link.amountCents, query.data.currency),
+              url: link.url,
+            });
             const isCopied = copied === link.claimId;
             return (
               <Card key={link.claimId} style={styles.linkCard}>
@@ -112,7 +116,7 @@ function ShareContent() {
                   <View style={styles.flex}>
                     <AppText variant="heading">{name}</AppText>
                     <AppText variant="bodySmall" color={palette.textSecondary}>
-                      Solicitud individual
+                      {t('share.individualRequest')}
                     </AppText>
                   </View>
                   <CurrencyAmount
@@ -123,13 +127,13 @@ function ShareContent() {
                 </View>
                 <View style={styles.actions}>
                   <AppButton
-                    title="Compartir"
+                    title={t('common.share')}
                     style={styles.flex}
                     leftIcon={<Share2 color={palette.white} size={18} />}
                     onPress={() => void NativeShare.share({ message })}
                   />
                   <AppButton
-                    title={isCopied ? 'Enlace copiado' : 'Copiar enlace'}
+                    title={isCopied ? t('share.linkCopied') : t('share.copyLink')}
                     variant="outline"
                     style={styles.flex}
                     leftIcon={
@@ -152,12 +156,12 @@ function ShareContent() {
       )}
 
       <AppButton
-        title="Ver estado del cobro"
+        title={t('share.statusAction')}
         size="lg"
         onPress={() => router.replace(`/expense/${expenseId}/status`)}
       />
       <AppText variant="caption" color={palette.textSecondary} style={styles.legalText}>
-        Los enlaces son individuales y privados. No compartas un enlace en un grupo.
+        {t('share.legal')}
       </AppText>
     </ScreenContainer>
   );

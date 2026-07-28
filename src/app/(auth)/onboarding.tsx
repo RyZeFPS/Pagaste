@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, TextInput, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Check, LockKeyhole, UserRound } from 'lucide-react-native';
@@ -8,37 +8,50 @@ import { ThreeDIcon, type ThreeDAsset } from '@/components/three-d-icon';
 import { AuthScreenSkeleton } from '@/components/loading-skeletons';
 import { useAuth } from '@/providers/auth-provider';
 import { useAppColors } from '@/providers/app-providers';
-import { displayNameSchema } from '@/lib/auth-validation';
+import { createAuthValidationSchemas } from '@/lib/auth-validation';
 import { getSafeInviteRedirect } from '@/lib/navigation';
+import { useI18n } from '@/i18n';
 import { radii, spacing } from '@/theme';
 
-const guide = [
+const guideDefinition = [
   {
     icon: 'receiptScan' as ThreeDAsset,
-    title: 'Escanea o añade el gasto',
-    body: 'Fotografía el ticket o introduce los productos manualmente. Siempre podrás revisarlos antes de continuar.',
-    note: 'Tú mantienes el control de todos los importes.',
+    title: 'auth.guideExpenseTitle',
+    body: 'auth.guideExpenseBody',
+    note: 'auth.guideExpenseNote',
   },
   {
     icon: 'groupPeople' as ThreeDAsset,
-    title: 'Reparte con claridad',
-    body: 'Añade personas o grupos y asigna cada producto. Pagaste calcula automáticamente cuánto corresponde a cada uno.',
-    note: 'El desglose queda claro para todos.',
+    title: 'auth.guideSplitTitle',
+    body: 'auth.guideSplitBody',
+    note: 'auth.guideSplitNote',
   },
   {
     icon: 'paidCheck' as ThreeDAsset,
-    title: 'Comparte y confirma lo recibido',
-    body: 'Envía un enlace privado y marca el cobro cuando recibas el Bizum o la transferencia.',
-    note: 'Pagaste no mueve ni verifica dinero: organiza el reparto y los cobros.',
+    title: 'auth.guideCollectTitle',
+    body: 'auth.guideCollectBody',
+    note: 'auth.guideCollectNote',
   },
 ] as const;
 
-const TOTAL_STEPS = guide.length + 1;
+const TOTAL_STEPS = guideDefinition.length + 1;
 
 export default function OnboardingScreen() {
   const auth = useAuth();
   const router = useRouter();
   const palette = useAppColors();
+  const { locale, t } = useI18n();
+  const { displayNameSchema } = useMemo(() => createAuthValidationSchemas(locale), [locale]);
+  const guide = useMemo(
+    () =>
+      guideDefinition.map((item) => ({
+        icon: item.icon,
+        title: t(item.title),
+        body: t(item.body),
+        note: t(item.note),
+      })),
+    [t],
+  );
   const params = useLocalSearchParams<{ next?: string | string[] }>();
   const next = getSafeInviteRedirect(params.next);
   const [name, setName] = useState(
@@ -67,8 +80,12 @@ export default function OnboardingScreen() {
   useEffect(() => {
     AccessibilityInfo.announceForAccessibility(
       step === 0
-        ? `Paso 1 de ${TOTAL_STEPS}. Crea tu perfil.`
-        : `Paso ${step + 1} de ${TOTAL_STEPS}. ${guide[step - 1]?.title ?? ''}`,
+        ? t('auth.guideProfileAnnouncement', { total: TOTAL_STEPS })
+        : t('auth.guideStepAnnouncement', {
+            step: step + 1,
+            total: TOTAL_STEPS,
+            title: guide[step - 1]?.title ?? '',
+          }),
     );
     transition.stopAnimation();
     if (reduceMotion) {
@@ -82,7 +99,7 @@ export default function OnboardingScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [direction, reduceMotion, step, transition]);
+  }, [direction, guide, reduceMotion, step, t, transition]);
 
   if (auth.loading) return <AuthScreenSkeleton />;
   if (!auth.session) return <Redirect href="/(auth)/login" />;
@@ -114,7 +131,7 @@ export default function OnboardingScreen() {
       await auth.completeOnboarding(displayName);
       router.replace(next ?? '/(tabs)');
     } catch {
-      setError('No hemos podido guardar tu perfil. Inténtalo de nuevo.');
+      setError(t('auth.onboardingSaveError'));
     } finally {
       setLoading(false);
     }
@@ -134,12 +151,12 @@ export default function OnboardingScreen() {
           <View style={styles.brand} accessibilityRole="header">
             <BrandLogo variant="horizontal" width={154} testID="pagaste-brand-logo" />
             <AppText variant="caption" color={palette.textSecondary}>
-              Tu primera vuelta, en un minuto.
+              {t('auth.onboardingHint')}
             </AppText>
           </View>
           {step > 0 ? (
             <AppButton
-              title="Omitir guía"
+              title={t('auth.skipGuide')}
               variant="ghost"
               size="sm"
               loading={loading}
@@ -150,7 +167,10 @@ export default function OnboardingScreen() {
 
         <View
           accessibilityRole="progressbar"
-          accessibilityLabel={`Guía inicial, paso ${step + 1} de ${TOTAL_STEPS}`}
+          accessibilityLabel={t('auth.guideProgress', {
+            step: step + 1,
+            total: TOTAL_STEPS,
+          })}
           accessibilityValue={{ min: 1, max: TOTAL_STEPS, now: step + 1 }}
           style={styles.progress}
         >
@@ -215,7 +235,7 @@ export default function OnboardingScreen() {
         <View style={styles.actions}>
           {step > 0 ? (
             <AppButton
-              title="Anterior"
+              title={t('auth.previous')}
               variant="secondary"
               size="lg"
               leftIcon={<ArrowLeft color={palette.textPrimary} size={19} />}
@@ -226,7 +246,7 @@ export default function OnboardingScreen() {
           ) : null}
           <AppButton
             testID={step === TOTAL_STEPS - 1 ? 'onboarding-finish' : 'onboarding-next'}
-            title={step === TOTAL_STEPS - 1 ? 'Empezar a usar Pagaste' : 'Siguiente'}
+            title={t(step === TOTAL_STEPS - 1 ? 'auth.startUsing' : 'auth.next')}
             size="lg"
             loading={loading}
             style={styles.primaryAction}
@@ -252,6 +272,7 @@ function ProfileStep({
   onSubmit: () => void;
 }) {
   const palette = useAppColors();
+  const { t } = useI18n();
   return (
     <>
       <View
@@ -270,17 +291,15 @@ function ProfileStep({
       <Card padding="spacious" style={styles.card}>
         <View style={styles.heading}>
           <AppText accessibilityRole="header" variant="screenTitle">
-            ¿Cómo te llamas?
+            {t('auth.onboardingTitle')}
           </AppText>
-          <AppText color={palette.textSecondary}>
-            Este nombre aparecerá en los repartos y solicitudes que compartas.
-          </AppText>
+          <AppText color={palette.textSecondary}>{t('auth.onboardingProfileBody')}</AppText>
         </View>
         <AppInput
           ref={inputRef}
           testID="onboarding-name"
-          label="Nombre visible"
-          placeholder="Álex"
+          label={t('auth.displayName')}
+          placeholder={t('auth.namePlaceholder')}
           value={name}
           onChangeText={onChange}
           autoFocus
@@ -294,7 +313,7 @@ function ProfileStep({
         <View style={styles.privacy}>
           <LockKeyhole color={palette.textMuted} size={16} />
           <AppText variant="caption" color={palette.textSecondary} style={styles.flex}>
-            Podrás cambiar el nombre y añadir una foto desde tu perfil.
+            {t('auth.onboardingPrivacy')}
           </AppText>
         </View>
       </Card>
