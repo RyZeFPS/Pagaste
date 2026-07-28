@@ -83,6 +83,35 @@ export default function PublicClaimScreen() {
   }
 
   const claim = query.data;
+  if ('terminal' in claim) {
+    return (
+      <ScreenContainer publicPage contentContainerStyle={styles.screenContent}>
+        <View style={styles.brand}>
+          <BrandLogo variant="horizontal" width={190} testID="pagaste-brand-logo" />
+          <AppText variant="caption" color={palette.textSecondary}>
+            {t('claim.privateLink')}
+          </AppText>
+        </View>
+        <Card
+          variant="flat"
+          style={[styles.completionCard, { backgroundColor: palette.successLight }]}
+        >
+          <View style={[styles.completionIcon, { backgroundColor: palette.surface }]}>
+            <CheckCircle2 color={palette.successInk} size={38} />
+          </View>
+          <AppText variant="screenTitle" color={palette.successInk} style={styles.centerText}>
+            {t('claim.completionTitle')}
+          </AppText>
+          <AppText variant="body" color={palette.textSecondary} style={styles.centerText}>
+            {t('claim.completionBody')}
+          </AppText>
+        </Card>
+        <AppText variant="caption" color={palette.textSecondary} style={styles.centerText}>
+          {t('claim.completionPrivacy')}
+        </AppText>
+      </ScreenContainer>
+    );
+  }
   const paymentOpen = claim.status === 'pending' || claim.status === 'reminder_sent';
   const statusPresentation =
     claim.status === 'received'
@@ -457,6 +486,19 @@ function FlowStep({ number, text }: { number: string; text: string }) {
 const styles = StyleSheet.create({
   screenContent: { gap: spacing.lg },
   brand: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
+  completionCard: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxxl,
+  },
+  completionIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   hero: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xxl },
   avatarRing: { borderWidth: 4, borderRadius: 36 },
   centerText: { textAlign: 'center' },

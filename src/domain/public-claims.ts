@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { ClaimStatus, PublicClaimDto } from '../types';
+import type {
+  ClaimStatus,
+  PublicClaimCompletionDto,
+  PublicClaimDto,
+  PublicClaimResponseDto,
+} from '../types';
 
 function normalizePublicText(value: string): string {
   return value
@@ -114,6 +119,15 @@ export const publicClaimDtoSchema = publicClaimSourceSchema.extend({
   canDispute: z.boolean(),
 });
 
+export const publicClaimCompletionDtoSchema = z
+  .object({
+    terminal: z.literal(true),
+    status: z.literal('received'),
+    completed: z.literal(true),
+    recipientLocale: z.string().trim().min(2).max(35).optional(),
+  })
+  .strip();
+
 export function claimPublicActions(status: ClaimStatus): {
   canDispute: boolean;
 } {
@@ -134,6 +148,12 @@ export function sanitizePublicClaimDto(input: unknown): PublicClaimDto {
     ...parsed,
     ...claimPublicActions(parsed.status),
   });
+}
+
+export function sanitizePublicClaimResponseDto(input: unknown): PublicClaimResponseDto {
+  const completion = publicClaimCompletionDtoSchema.safeParse(input);
+  if (completion.success) return completion.data satisfies PublicClaimCompletionDto;
+  return sanitizePublicClaimDto(input);
 }
 
 export const toPublicClaimDto = sanitizePublicClaimDto;

@@ -1,4 +1,4 @@
-import type { PublicClaimDto } from '@/types';
+import type { PublicClaimCompletionDto, PublicClaimDto } from '@/types';
 
 export type Profile = {
   id: string;
@@ -297,7 +297,7 @@ export type AppliedExpenseCollaboration = {
   itemCount: number;
 };
 
-export type PublicClaim = PublicClaimDto;
+export type PublicClaim = PublicClaimDto | PublicClaimCompletionDto;
 
 export type ClaimLink = {
   claimId: string;

@@ -4,6 +4,7 @@ import {
   assertClaimTransition,
   canTransitionClaim,
   sanitizePublicClaimDto,
+  sanitizePublicClaimResponseDto,
   transitionClaimStatus,
 } from '../../src/domain';
 
@@ -173,5 +174,27 @@ describe('public claim projection', () => {
       dto.amountCents,
     );
     expect(dto).not.toHaveProperty('internalExpenseId');
+  });
+
+  it('accepts only a minimal terminal confirmation after the full link is revoked', () => {
+    const dto = sanitizePublicClaimResponseDto({
+      terminal: true,
+      status: 'received',
+      completed: true,
+      recipientLocale: 'es-ES',
+      creditorDisplayName: 'must-not-leak',
+      amountCents: 8_500,
+      items: [{ name: 'must-not-leak' }],
+    });
+
+    expect(dto).toEqual({
+      terminal: true,
+      status: 'received',
+      completed: true,
+      recipientLocale: 'es-ES',
+    });
+    expect(dto).not.toHaveProperty('creditorDisplayName');
+    expect(dto).not.toHaveProperty('amountCents');
+    expect(dto).not.toHaveProperty('items');
   });
 });

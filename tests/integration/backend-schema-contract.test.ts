@@ -66,6 +66,10 @@ const debtOffsetNotificationMigrationSql = readFileSync(
   join(migrationsDirectory, '20260728161957_remove_offset_claim_notifications.sql'),
   'utf8',
 ).toLowerCase();
+const publicClaimCompletionMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260728163209_public_claim_completion_grace.sql'),
+  'utf8',
+).toLowerCase();
 
 const exposedTables = Array.from(
   migrationSql.matchAll(/create\s+table\s+public\.([a-z][a-z0-9_]*)/g),
@@ -313,6 +317,31 @@ describe('Supabase security contract', () => {
     );
     expect(debtOffsetNotificationMigrationSql).toMatch(
       /revoke all on function private\.remove_fully_offset_claim_notification\(\)[\s\S]*?from public, anon, authenticated, service_role/,
+    );
+  });
+
+  it('exposes only a short-lived minimal completion receipt after revoking a claim link', () => {
+    expect(publicClaimCompletionMigrationSql).toContain(
+      'create table private.claim_completion_receipts',
+    );
+    expect(publicClaimCompletionMigrationSql).toContain("interval '10 minutes'");
+    expect(publicClaimCompletionMigrationSql).toContain(
+      'old.public_token_hash is not null',
+    );
+    expect(publicClaimCompletionMigrationSql).toContain('new.public_token_hash is null');
+    expect(publicClaimCompletionMigrationSql).toContain(
+      'create function public.get_public_claim_completion',
+    );
+    expect(publicClaimCompletionMigrationSql).toContain("'terminal', true");
+    for (const privateField of ['amountcents', 'items', 'creditordisplayname', 'expensetitle']) {
+      expect(
+        publicClaimCompletionMigrationSql.match(
+          /create function public\.get_public_claim_completion[\s\S]*?end;\s*\$\$;/,
+        )?.[0],
+      ).not.toContain(privateField);
+    }
+    expect(publicClaimCompletionMigrationSql).toMatch(
+      /grant execute on function public\.get_public_claim_completion\(text\)[\s\S]*?to service_role/,
     );
   });
 

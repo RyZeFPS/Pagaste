@@ -101,6 +101,8 @@ describe('Edge Function API contract', () => {
   it('adds only allow-listed group progress to the public claim response', () => {
     const publicClaim = source('get-public-claim');
     expect(publicClaim).toContain("'get_public_claim_payment_progress'");
+    expect(publicClaim).toContain("'get_public_claim_completion'");
+    expect(publicClaim).toContain("'CLAIM_COMPLETION_LOOKUP_FAILED'");
     expect(publicClaim).toContain('...(progress ?? {})');
   });
 

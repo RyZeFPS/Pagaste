@@ -58,5 +58,14 @@ export interface PublicClaimDto {
   canDispute: boolean;
 }
 
+export interface PublicClaimCompletionDto {
+  terminal: true;
+  status: 'received';
+  completed: true;
+  recipientLocale?: string;
+}
+
+export type PublicClaimResponseDto = PublicClaimDto | PublicClaimCompletionDto;
+
 export type ClaimDisputeReason =
   'did_not_consume' | 'incorrect_amount' | 'already_paid' | 'unknown_expense' | 'other';

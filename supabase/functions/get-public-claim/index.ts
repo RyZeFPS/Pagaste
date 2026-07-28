@@ -13,7 +13,17 @@ serve(async (req) => {
   const tokenHash = await hashPublicToken(input.token);
   const { data, error } = await admin.rpc('get_public_claim_payload', { p_token_hash: tokenHash });
   if (error) throw fromDatabaseError(error, 'CLAIM_LOOKUP_FAILED');
-  if (!data) throw new ApiError('CLAIM_NOT_FOUND', 'Este enlace no está disponible.', 404);
+  if (!data) {
+    const { data: completion, error: completionError } = await admin.rpc(
+      'get_public_claim_completion',
+      { p_token_hash: tokenHash },
+    );
+    if (completionError)
+      throw fromDatabaseError(completionError, 'CLAIM_COMPLETION_LOOKUP_FAILED');
+    if (!completion)
+      throw new ApiError('CLAIM_NOT_FOUND', 'Este enlace no está disponible.', 404);
+    return ok(req, completion);
+  }
   const { data: progress, error: progressError } = await admin.rpc(
     'get_public_claim_payment_progress',
     { p_token_hash: tokenHash },

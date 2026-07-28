@@ -3,7 +3,7 @@ import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { appUrl, getSupabase } from '@/lib/supabase/client';
 import { AppError } from '@/lib/api-error';
-import { sanitizePublicClaimDto } from '@/domain/public-claims';
+import { sanitizePublicClaimResponseDto } from '@/domain/public-claims';
 import type { PersonSuggestion } from '@/domain/person-suggestions';
 import type { CombinedReceiptResult } from '@/domain/multi-receipt';
 import type { ReceiptScanResult } from '@/types';
@@ -837,7 +837,7 @@ export const repository = {
     return invoke('create-claim-links', { expenseId });
   },
   async publicClaim(token: string): Promise<PublicClaim> {
-    return sanitizePublicClaimDto(await invoke<unknown>('get-public-claim', { token }));
+    return sanitizePublicClaimResponseDto(await invoke<unknown>('get-public-claim', { token }));
   },
   disputeClaim(
     token: string,

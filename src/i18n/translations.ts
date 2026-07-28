@@ -1121,6 +1121,11 @@ export const es = {
   'claim.progressTitle': 'Estado del gasto',
   'claim.progressResolved': '{settled} de {total} resuelto',
   'claim.progressComplete': 'Todos los pagos están resueltos',
+  'claim.completionTitle': 'Ingreso confirmado',
+  'claim.completionBody':
+    'La persona que adelantó el dinero ha confirmado que recibió este pago.',
+  'claim.completionPrivacy':
+    'Por privacidad, el desglose ya no está disponible. Este aviso caduca en unos minutos.',
   'claim.progressPending': 'Pendiente',
   'claim.progressYou': 'Tú',
   'claim.progressOffset': 'Compensado',
@@ -2326,6 +2331,10 @@ export const en = {
   'claim.progressTitle': 'Expense status',
   'claim.progressResolved': '{settled} of {total} resolved',
   'claim.progressComplete': 'All payments are resolved',
+  'claim.completionTitle': 'Payment received',
+  'claim.completionBody': 'The person who paid upfront confirmed that this payment was received.',
+  'claim.completionPrivacy':
+    'For privacy, the breakdown is no longer available. This notice expires in a few minutes.',
   'claim.progressPending': 'Pending',
   'claim.progressYou': 'You',
   'claim.progressOffset': 'Offset',
