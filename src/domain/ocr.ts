@@ -403,11 +403,11 @@ export function normalizeReceiptOcrResponse(
     confidence: responseConfidence,
     items,
     warnings,
-  });
+  }) as ReceiptScanResult;
 }
 
 export const normalizeOcrResponse = normalizeReceiptOcrResponse;
 
 export function parseReceiptScanResult(input: unknown): ReceiptScanResult {
-  return receiptScanResultSchema.parse(input);
+  return receiptScanResultSchema.parse(input) as ReceiptScanResult;
 }
