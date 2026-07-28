@@ -12,6 +12,7 @@ import {
   Link2,
   Mail,
   RefreshCw,
+  Scale,
   XCircle,
 } from 'lucide-react-native';
 import { PageHeader, RequireAuth } from '@/components/app-shell';
@@ -94,6 +95,8 @@ function StatusContent() {
       setFeedback(t('status.receivedFeedback'));
       await refresh();
       await cache.invalidateQueries({ queryKey: ['expenses'] });
+      if (query.data?.group_id)
+        await cache.invalidateQueries({ queryKey: ['group', query.data.group_id] });
     },
     onError: () => setFeedback(t('status.receivedError')),
   });
@@ -257,11 +260,22 @@ function StatusContent() {
           <ListCard>
             {query.data.claims.map((claim, index) => {
               const openDispute = claim.disputes?.find((entry) => entry.status === 'open');
+              const offsetCents =
+                claim.events
+                  ?.filter((event) => event.event_type === 'debt_offset')
+                  .reduce(
+                    (sum, event) =>
+                      sum + Number(event.metadata?.offsetAmountCents ?? 0),
+                    0,
+                  ) ?? 0;
+              const fullyOffset = claim.status === 'cancelled' && offsetCents > 0;
               const statusIcon =
                 claim.status === 'received' ? (
                   <CheckCircle2 color={palette.success} size={20} />
                 ) : claim.status === 'disputed' ? (
                   <CircleAlert color={palette.danger} size={20} />
+                ) : fullyOffset ? (
+                  <Scale color={palette.success} size={20} />
                 ) : claim.status === 'cancelled' ? (
                   <XCircle color={palette.textMuted} size={20} />
                 ) : claim.status === 'reminder_sent' ? (
@@ -297,10 +311,22 @@ function StatusContent() {
                       </View>
                       <StatusLabel
                         status={claim.status}
-                        label={t(labelKeys[claim.status])}
+                        label={fullyOffset ? t('status.offset') : t(labelKeys[claim.status])}
                         icon={statusIcon}
                       />
                     </View>
+
+                    {offsetCents > 0 ? (
+                      <AppText
+                        variant="caption"
+                        color={palette.successInk}
+                        style={styles.offsetNote}
+                      >
+                        {t('status.offsetApplied', {
+                          amount: formatMoney(offsetCents, query.data.currency),
+                        })}
+                      </AppText>
+                    ) : null}
 
                     {claim.status === 'pending' || claim.status === 'reminder_sent' ? (
                       <View style={styles.actions}>
@@ -663,6 +689,7 @@ const styles = StyleSheet.create({
   claimRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   grow: { flex: 1, minWidth: 0, gap: spacing.xxs },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginLeft: 60 },
+  offsetNote: { marginLeft: 60 },
   disputePanel: { marginLeft: 60, padding: spacing.md, borderRadius: radii.md, gap: spacing.sm },
   detailCard: { gap: spacing.lg },
   completedCard: {

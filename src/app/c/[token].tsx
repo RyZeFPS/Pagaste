@@ -8,8 +8,10 @@ import {
   Copy,
   Landmark,
   Phone,
+  Scale,
   ShieldCheck,
   TriangleAlert,
+  UsersRound,
 } from 'lucide-react-native';
 import { BrandLogo } from '@/components/brand-logo';
 import {
@@ -21,6 +23,7 @@ import {
   Card,
   CurrencyAmount,
   ErrorState,
+  ProgressBar,
   ReceiptItemRow,
   ScreenContainer,
   StatusBadge,
@@ -142,6 +145,28 @@ export default function PublicClaimScreen() {
         <StatusBadge status={claim.status} label={t(`status.${claim.status}`)} />
       </Card>
 
+      {claim.offsetAmountCents > 0 ? (
+        <Card
+          variant="flat"
+          style={[styles.compensationCard, { backgroundColor: palette.successLight }]}
+        >
+          <View style={[styles.paymentIcon, { backgroundColor: palette.surface }]}>
+            <Scale color={palette.successInk} size={22} />
+          </View>
+          <View style={styles.flex}>
+            <AppText variant="heading" color={palette.successInk}>
+              {t('claim.compensationTitle')}
+            </AppText>
+            <AppText variant="bodySmall" color={palette.textSecondary}>
+              {t('claim.compensationBody', {
+                offset: formatMoney(claim.offsetAmountCents, claim.currency),
+                remaining: formatMoney(claim.amountCents, claim.currency),
+              })}
+            </AppText>
+          </View>
+        </Card>
+      ) : null}
+
       {paymentOpen ? (
         <Card style={styles.paymentCard}>
           <View style={styles.paymentHeading}>
@@ -227,6 +252,76 @@ export default function PublicClaimScreen() {
           </View>
         </Card>
       )}
+
+      <Card style={styles.progressCard}>
+        <View style={styles.progressHeading}>
+          <View style={[styles.paymentIcon, { backgroundColor: palette.primaryLight }]}>
+            <UsersRound color={palette.primary} size={22} />
+          </View>
+          <View style={styles.flex}>
+            <AppText variant="heading">{t('claim.progressTitle')}</AppText>
+            <AppText variant="bodySmall" color={palette.textSecondary}>
+              {claim.paymentProgress.completed
+                ? t('claim.progressComplete')
+                : t('claim.progressResolved', {
+                    settled: formatMoney(
+                      claim.paymentProgress.settledCents,
+                      claim.currency,
+                    ),
+                    total: formatMoney(claim.paymentProgress.totalCents, claim.currency),
+                  })}
+            </AppText>
+          </View>
+        </View>
+        <ProgressBar
+          value={
+            claim.paymentProgress.totalCents > 0
+              ? claim.paymentProgress.settledCents / claim.paymentProgress.totalCents
+              : claim.paymentProgress.completed
+                ? 1
+                : 0
+          }
+          color={palette.success}
+        />
+        <View style={styles.payers}>
+          {claim.paymentProgress.payers.map((payer, index) => {
+            const resolved =
+              payer.amountCents > 0 && payer.settledCents >= payer.amountCents;
+            const payerStatus =
+              resolved && payer.status !== 'received'
+                ? t('claim.progressOffset')
+                : t(`status.${payer.status}`);
+            return (
+              <View key={`${payer.displayName}:${index}`}>
+                {index > 0 ? (
+                  <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+                ) : null}
+                <View style={styles.payerRow}>
+                  <Avatar name={payer.displayName} size={38} />
+                  <View style={styles.flex}>
+                    <AppText variant="label">
+                      {payer.displayName}
+                      {payer.isCurrent ? ` · ${t('claim.progressYou')}` : ''}
+                    </AppText>
+                    <AppText
+                      variant="caption"
+                      color={resolved ? palette.successInk : palette.warningInk}
+                    >
+                      {payerStatus}
+                    </AppText>
+                  </View>
+                  <CurrencyAmount
+                    cents={payer.amountCents}
+                    currency={claim.currency}
+                    variant="body"
+                    color={resolved ? palette.successInk : palette.textPrimary}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </Card>
 
       <Card style={styles.flowCard}>
         <View style={styles.flowHeading}>
@@ -413,6 +508,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   closedPayment: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  compensationCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  progressCard: { gap: spacing.lg },
+  progressHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  payers: { gap: 0 },
+  payerRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   flowCard: { gap: spacing.lg },
   flowHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   flowSteps: { gap: spacing.md },

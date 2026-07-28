@@ -19,6 +19,22 @@ export interface PublicClaimItemDto {
   allocationLabel: string;
 }
 
+export interface PublicClaimPaymentProgressPayerDto {
+  displayName: string;
+  amountCents: Cents;
+  settledCents: Cents;
+  status: PublicClaimStatus;
+  isCurrent: boolean;
+}
+
+export interface PublicClaimPaymentProgressDto {
+  totalCents: Cents;
+  settledCents: Cents;
+  pendingCents: Cents;
+  completed: boolean;
+  payers: readonly PublicClaimPaymentProgressPayerDto[];
+}
+
 export interface PublicClaimDto {
   creditorDisplayName: string;
   creditorAvatarUrl: string | null;
@@ -32,10 +48,13 @@ export interface PublicClaimDto {
   occurredAt: string;
   currency: CurrencyCode;
   amountCents: Cents;
+  originalAmountCents: Cents;
+  offsetAmountCents: Cents;
   status: PublicClaimStatus;
   recipientLocale?: string;
   linkExpiresAt?: string | null;
   items: readonly PublicClaimItemDto[];
+  paymentProgress: PublicClaimPaymentProgressDto;
   canDispute: boolean;
 }
 

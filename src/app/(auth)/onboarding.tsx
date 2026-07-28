@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleSheet, TextInput, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Platform,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Check, LockKeyhole, UserRound } from 'lucide-react-native';
 import { AppButton, AppInput, AppText, Card, ScreenContainer } from '@/components/ui';
@@ -97,7 +105,7 @@ export default function OnboardingScreen() {
       toValue: 1,
       duration: 340,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [direction, guide, reduceMotion, step, t, transition]);
 

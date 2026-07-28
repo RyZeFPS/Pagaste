@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Share as NativeShare, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { Check, CheckCircle2, Copy, Share2 } from 'lucide-react-native';
+import { Check, CheckCircle2, Copy, Share2, UsersRound } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -58,6 +58,22 @@ function ShareContent() {
       </ScreenContainer>
     );
 
+  const groupMessage = links?.length
+    ? [
+        t('share.groupMessageHeader', { title: query.data.title }),
+        ...links.map((link) => {
+          const participant = query.data.participants.find(
+            (value) => value.id === link.debtorParticipantId,
+          );
+          return t('share.groupMessageLine', {
+            name: participant?.display_name ?? t('share.participant'),
+            amount: formatMoney(link.amountCents, query.data.currency),
+            url: link.url,
+          });
+        }),
+      ].join('\n\n')
+    : '';
+
   return (
     <ScreenContainer contentContainerStyle={styles.screenContent}>
       <PageHeader title={t('expense.shareTitle')} />
@@ -97,6 +113,30 @@ function ShareContent() {
               })}
             </AppText>
           </View>
+          {query.data.group_id ? (
+            <Card
+              variant="flat"
+              style={[styles.groupShareCard, { backgroundColor: palette.primaryLight }]}
+            >
+              <View style={styles.personRow}>
+                <View style={[styles.groupShareIcon, { backgroundColor: palette.surface }]}>
+                  <UsersRound color={palette.primary} size={22} strokeWidth={2} />
+                </View>
+                <View style={styles.flex}>
+                  <AppText variant="heading">{t('share.groupTitle')}</AppText>
+                  <AppText variant="bodySmall" color={palette.textSecondary}>
+                    {t('share.groupBody')}
+                  </AppText>
+                </View>
+              </View>
+              <AppButton
+                title={t('share.groupAction')}
+                fullWidth
+                leftIcon={<Share2 color={palette.white} size={18} />}
+                onPress={() => void NativeShare.share({ message: groupMessage })}
+              />
+            </Card>
+          ) : null}
           {links.map((link) => {
             const participant = query.data.participants.find(
               (value) => value.id === link.debtorParticipantId,
@@ -182,6 +222,14 @@ const styles = StyleSheet.create({
   },
   linksSection: { gap: spacing.md },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupShareCard: { gap: spacing.lg },
+  groupShareIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   linkCard: { gap: spacing.lg },
   personRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   actions: { flexDirection: 'row', gap: spacing.sm },

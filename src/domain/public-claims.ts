@@ -22,6 +22,7 @@ function nullablePublicText(maxLength: number) {
 }
 
 const centsSchema = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+const nonNegativeCentsSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
 const avatarUrlSchema = z
   .string()
@@ -65,6 +66,26 @@ const publicClaimStatusSchema = z.enum([
   'cancelled',
 ]);
 
+const publicClaimPaymentPayerSchema = z
+  .object({
+    displayName: publicText(100),
+    amountCents: nonNegativeCentsSchema,
+    settledCents: nonNegativeCentsSchema,
+    status: publicClaimStatusSchema,
+    isCurrent: z.boolean(),
+  })
+  .strip();
+
+const publicClaimPaymentProgressSchema = z
+  .object({
+    totalCents: nonNegativeCentsSchema,
+    settledCents: nonNegativeCentsSchema,
+    pendingCents: nonNegativeCentsSchema,
+    completed: z.boolean(),
+    payers: z.array(publicClaimPaymentPayerSchema).max(100),
+  })
+  .strip();
+
 const publicClaimSourceSchema = z
   .object({
     creditorDisplayName: publicText(100),
@@ -79,10 +100,13 @@ const publicClaimSourceSchema = z
       .transform((value) => value.toUpperCase())
       .pipe(z.string().regex(/^[A-Z]{3}$/)),
     amountCents: centsSchema.positive(),
+    originalAmountCents: centsSchema.positive(),
+    offsetAmountCents: nonNegativeCentsSchema,
     status: publicClaimStatusSchema,
     recipientLocale: z.string().trim().min(2).max(35).optional(),
     linkExpiresAt: occurredAtSchema.nullable().optional(),
     items: z.array(publicClaimItemSchema).max(250),
+    paymentProgress: publicClaimPaymentProgressSchema,
   })
   .strip();
 

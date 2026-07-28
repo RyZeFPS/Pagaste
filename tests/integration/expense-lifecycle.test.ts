@@ -77,7 +77,22 @@ describe('manual expense to public claim lifecycle', () => {
       occurredAt: '2026-07-18T21:00:00.000Z',
       currency: 'EUR',
       amountCents: ferran!.totalCents,
+      originalAmountCents: ferran!.totalCents,
+      offsetAmountCents: 0,
       status: 'pending',
+      paymentProgress: {
+        totalCents: 2_500,
+        settledCents: 0,
+        pendingCents: 2_500,
+        completed: false,
+        payers: claims.map((claim) => ({
+          displayName: claim.memberId,
+          amountCents: claim.amountCents,
+          settledCents: 0,
+          status: 'pending',
+          isCurrent: claim.memberId === 'ferran',
+        })),
+      },
       items: ferran!.breakdown
         .filter(({ amountCents }) => amountCents !== 0)
         .map((item) => {

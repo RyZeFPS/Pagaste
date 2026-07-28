@@ -296,7 +296,24 @@ function publicClaim(state: MockSupabase) {
     occurredAt: expense.occurred_at,
     currency: expense.currency,
     amountCents: claim?.amount_cents ?? 2_000,
+    originalAmountCents: claim?.amount_cents ?? 2_000,
+    offsetAmountCents: 0,
     status: claim?.status ?? 'pending',
+    paymentProgress: {
+      totalCents: claim?.amount_cents ?? 2_000,
+      settledCents: claim?.status === 'received' ? (claim.amount_cents ?? 2_000) : 0,
+      pendingCents: claim?.status === 'received' ? 0 : (claim?.amount_cents ?? 2_000),
+      completed: claim?.status === 'received',
+      payers: [
+        {
+          displayName: 'Invitado',
+          amountCents: claim?.amount_cents ?? 2_000,
+          settledCents: claim?.status === 'received' ? (claim.amount_cents ?? 2_000) : 0,
+          status: claim?.status ?? 'pending',
+          isCurrent: true,
+        },
+      ],
+    },
     items:
       item && guestAllocation
         ? [
@@ -395,6 +412,17 @@ async function handleRest(route: Route, state: MockSupabase): Promise<void> {
       activeClaims: 1,
       nextDeadline: new Date(Date.now() + 7_200_000).toISOString(),
     });
+  }
+
+  if (table === 'get_group_member_debts' && method === 'POST') {
+    return json(route, [
+      {
+        group_member_id: ids.user,
+        user_id: ids.user,
+        amount_cents: 0,
+        currency: 'EUR',
+      },
+    ]);
   }
 
   if (table === 'profiles') {

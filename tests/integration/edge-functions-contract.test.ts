@@ -90,11 +90,18 @@ describe('Edge Function API contract', () => {
 
   it('delivers new linked claims without making push delivery transactional', () => {
     const createClaims = source('create-claim-links');
+    expect(createClaims).toContain("client.rpc('create_claims_with_offsets_transaction'");
     expect(createClaims).toContain('sendPushToUser');
     expect(createClaims).toContain("eventType: 'claim_requested'");
     expect(createClaims).toContain('Promise.allSettled');
     expect(createClaims).toContain('EdgeRuntime');
     expect(createClaims).toContain("route: '/notifications'");
+  });
+
+  it('adds only allow-listed group progress to the public claim response', () => {
+    const publicClaim = source('get-public-claim');
+    expect(publicClaim).toContain("'get_public_claim_payment_progress'");
+    expect(publicClaim).toContain('...(progress ?? {})');
   });
 
   it('lets a debtor request a bank-check notification without confirming payment', () => {

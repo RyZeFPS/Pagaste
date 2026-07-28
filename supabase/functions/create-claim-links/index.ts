@@ -178,7 +178,7 @@ serve(async (req) => {
       },
     ),
   );
-  const { data, error } = await client.rpc('create_claims_transaction', {
+  const { data, error } = await client.rpc('create_claims_with_offsets_transaction', {
     p_expense_id: input.expenseId,
     p_claims: secrets.map(
       ({ debtorParticipantId, creditorParticipantId, amountCents, tokenHash }) => ({
@@ -214,19 +214,23 @@ serve(async (req) => {
     admin,
     secrets.map((secret) => secret.debtorParticipantId),
   );
-  const createdClaims = secrets.map((secret) => {
+  const createdClaims = secrets.flatMap((secret) => {
     const row = rows.get(`${secret.debtorParticipantId}:${secret.creditorParticipantId}`);
-    if (!row) throw new ApiError('CLAIMS_CREATE_FAILED', 'Falta una solicitud creada.', 500);
-    return {
-      claimId: row.claim_id,
-      debtorParticipantId: secret.debtorParticipantId,
-      creditorParticipantId: secret.creditorParticipantId,
-      amountCents: row.amount_cents,
-      token: secret.token,
-      url: `${baseUrl}/c/${secret.token}?lang=${normalizedLanguage(
-        recipientLocales.get(secret.debtorParticipantId),
-      )}`,
-    };
+    // A missing row means this transfer was fully compensated against an
+    // existing reverse debt. No public bearer link or push is needed.
+    if (!row) return [];
+    return [
+      {
+        claimId: row.claim_id,
+        debtorParticipantId: secret.debtorParticipantId,
+        creditorParticipantId: secret.creditorParticipantId,
+        amountCents: row.amount_cents,
+        token: secret.token,
+        url: `${baseUrl}/c/${secret.token}?lang=${normalizedLanguage(
+          recipientLocales.get(secret.debtorParticipantId),
+        )}`,
+      },
+    ];
   });
 
   const [{ data: expense }, { data: creditor }] = await Promise.all([
@@ -257,6 +261,7 @@ serve(async (req) => {
     req,
     {
       claims: createdClaims.map(({ token: _token, ...claim }) => claim),
+      status: createdClaims.length ? 'sent' : 'settled',
     },
     201,
   );

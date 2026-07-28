@@ -14,5 +14,10 @@ serve(async (req) => {
   const { data, error } = await admin.rpc('get_public_claim_payload', { p_token_hash: tokenHash });
   if (error) throw fromDatabaseError(error, 'CLAIM_LOOKUP_FAILED');
   if (!data) throw new ApiError('CLAIM_NOT_FOUND', 'Este enlace no está disponible.', 404);
-  return ok(req, data);
+  const { data: progress, error: progressError } = await admin.rpc(
+    'get_public_claim_payment_progress',
+    { p_token_hash: tokenHash },
+  );
+  if (progressError) throw fromDatabaseError(progressError, 'CLAIM_PROGRESS_FAILED');
+  return ok(req, { ...data, ...(progress ?? {}) });
 });

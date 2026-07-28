@@ -151,7 +151,7 @@ function GroupContent() {
       </ScreenContainer>
     );
 
-  const { group, members, expenses } = query.data;
+  const { group, members, memberDebts, expenses } = query.data;
   const groupType = group.type.toLowerCase();
   const typeLabel =
     groupType === 'friends'
@@ -279,53 +279,45 @@ function GroupContent() {
                 : reputation
                   ? t('groups.reputationNew')
                   : null;
+              const debt =
+                memberDebts.find((entry) => entry.group_member_id === member.id)?.amount_cents ?? 0;
+              const debtLabel = formatMoney(debt, group.currency);
               return (
                 <View key={member.id}>
-                  <View style={styles.memberRow}>
-                    <Avatar name={member.display_name} size={38} />
+                  <View
+                    accessibilityLabel={t('groups.memberDebtA11y', {
+                      name: member.display_name,
+                      amount: debtLabel,
+                    })}
+                    style={styles.memberRow}
+                  >
+                    <Avatar name={member.display_name} uri={member.avatar_path} size={38} />
                     <View style={styles.memberCopy}>
                       <AppText variant="label" numberOfLines={1}>
                         {member.display_name}
                       </AppText>
                       <AppText variant="caption" color={palette.textSecondary}>
                         {status}
+                        {member.status === 'active' && reputationLabel
+                          ? ` · ${reputationLabel}`
+                          : ''}
                       </AppText>
                     </View>
-                    {member.status === 'active' && reputationLabel ? (
-                      <View
-                        accessibilityLabel={t('groups.reputationLabel', {
-                          value: reputationLabel,
-                        })}
-                        style={[styles.reputationBadge, { backgroundColor: palette.primaryLight }]}
+                    <View style={styles.memberDebt}>
+                      <AppText
+                        variant="label"
+                        color={debt > 0 ? palette.dangerInk : palette.textSecondary}
+                        tabular
                       >
-                        <AppText variant="caption" color={palette.primary} tabular>
-                          {reputationLabel}
-                        </AppText>
-                      </View>
-                    ) : (
-                      <View
-                        style={[
-                          styles.memberStatus,
-                          {
-                            backgroundColor:
-                              member.status === 'active'
-                                ? palette.successLight
-                                : palette.warningLight,
-                          },
-                        ]}
+                        {debtLabel}
+                      </AppText>
+                      <AppText
+                        variant="caption"
+                        color={debt > 0 ? palette.dangerInk : palette.textMuted}
                       >
-                        <AppText
-                          variant="caption"
-                          color={
-                            member.status === 'active' ? palette.successInk : palette.warningInk
-                          }
-                        >
-                          {member.status === 'active'
-                            ? t('groups.memberActive')
-                            : t('groups.memberPending')}
-                        </AppText>
-                      </View>
-                    )}
+                        {t(debt > 0 ? 'groups.memberDebt' : 'groups.memberNoDebt')}
+                      </AppText>
+                    </View>
                   </View>
                   {index < members.length - 1 ? <Divider inset={64} /> : null}
                 </View>
@@ -528,19 +520,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 1,
   },
-  memberStatus: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: radii.pill,
-  },
-  reputationBadge: {
-    minHeight: 28,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
+  memberDebt: { alignItems: 'flex-end', gap: 1 },
   inviteSheetIntro: {
     flexDirection: 'row',
     alignItems: 'flex-start',

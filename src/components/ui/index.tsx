@@ -658,7 +658,7 @@ export function LoadingSkeleton({
         toValue: 1,
         duration: 1350,
         easing: Easing.inOut(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     );
     animation.start();

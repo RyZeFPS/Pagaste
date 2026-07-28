@@ -22,6 +22,7 @@ import type {
   ExpenseSettlement,
   Group,
   GroupMember,
+  GroupMemberDebt,
   GroupStreakCard,
   ItemAllocation,
   Participant,
@@ -262,7 +263,7 @@ export const repository = {
     let query = getSupabase()
       .from('claims')
       .select(
-        '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), events:claim_events(event_type,created_at)',
+        '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), events:claim_events(event_type,created_at,metadata)',
       )
       .order('created_at', { ascending: false });
     if (expenseId) query = query.eq('expense_id', expenseId);
@@ -319,7 +320,7 @@ export const repository = {
         client
           .from('claims')
           .select(
-            '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), disputes:claim_disputes(reason,message,status,created_at)',
+            '*, debtor:expense_participants!claims_debtor_participant_id_fkey(id,user_id,display_name,avatar_path), creditor:expense_participants!claims_creditor_participant_id_fkey(id,user_id,display_name,avatar_path), expense:expenses!claims_expense_id_fkey(id,title,merchant_name,occurred_at,currency), disputes:claim_disputes(reason,message,status,created_at), events:claim_events(event_type,created_at,metadata)',
           )
           .eq('expense_id', id)
           .order('created_at'),
@@ -594,11 +595,17 @@ export const repository = {
       .single();
     return unwrap(result) as Group;
   },
-  async group(id: string): Promise<{ group: Group; members: GroupMember[]; expenses: Expense[] }> {
+  async group(id: string): Promise<{
+    group: Group;
+    members: GroupMember[];
+    memberDebts: GroupMemberDebt[];
+    expenses: Expense[];
+  }> {
     const client = getSupabase();
-    const [group, members, expenses] = await Promise.all([
+    const [group, members, memberDebts, expenses] = await Promise.all([
       client.from('groups').select('*').eq('id', id).single(),
       client.from('group_members').select('*').eq('group_id', id).order('created_at'),
+      client.rpc('get_group_member_debts', { p_group_id: id }),
       client
         .from('expenses')
         .select('*')
@@ -608,6 +615,7 @@ export const repository = {
     return {
       group: await withGroupAvatarUrl(unwrap(group) as Group),
       members: unwrap(members) as GroupMember[],
+      memberDebts: unwrap(memberDebts) as GroupMemberDebt[],
       expenses: unwrap(expenses) as Expense[],
     };
   },

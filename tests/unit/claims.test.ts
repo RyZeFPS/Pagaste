@@ -44,7 +44,32 @@ describe('public claim projection', () => {
     occurredAt: '2026-07-22T12:00:00+02:00',
     currency: 'eur',
     amountCents: 850,
+    originalAmountCents: 850,
+    offsetAmountCents: 0,
     status: 'pending',
+    paymentProgress: {
+      totalCents: 2_050,
+      settledCents: 1_200,
+      pendingCents: 850,
+      completed: false,
+      payers: [
+        {
+          internalParticipantId: 'must-not-leak',
+          displayName: ' Ferran ',
+          amountCents: 850,
+          settledCents: 0,
+          status: 'pending',
+          isCurrent: true,
+        },
+        {
+          displayName: ' Marta ',
+          amountCents: 1_200,
+          settledCents: 1_200,
+          status: 'received',
+          isCurrent: false,
+        },
+      ],
+    },
     items: [
       {
         id: 'internal-item-id',
@@ -67,7 +92,31 @@ describe('public claim projection', () => {
       occurredAt: '2026-07-22T10:00:00.000Z',
       currency: 'EUR',
       amountCents: 850,
+      originalAmountCents: 850,
+      offsetAmountCents: 0,
       status: 'pending',
+      paymentProgress: {
+        totalCents: 2_050,
+        settledCents: 1_200,
+        pendingCents: 850,
+        completed: false,
+        payers: [
+          {
+            displayName: 'Ferran',
+            amountCents: 850,
+            settledCents: 0,
+            status: 'pending',
+            isCurrent: true,
+          },
+          {
+            displayName: 'Marta',
+            amountCents: 1_200,
+            settledCents: 1_200,
+            status: 'received',
+            isCurrent: false,
+          },
+        ],
+      },
       canDispute: true,
       items: [
         {
@@ -82,6 +131,7 @@ describe('public claim projection', () => {
     expect(dto).not.toHaveProperty('paymentConcept');
     expect(dto).not.toHaveProperty('canMarkPaid');
     expect(dto.items[0]).not.toHaveProperty('id');
+    expect(dto.paymentProgress.payers[0]).not.toHaveProperty('internalParticipantId');
   });
 
   it('accepts a withheld phone and rejects legacy or unsafe payloads', () => {

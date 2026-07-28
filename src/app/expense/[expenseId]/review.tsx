@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Check, Send } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AppButton,
   AppText,
@@ -35,6 +35,7 @@ export default function ReviewScreen() {
 function ReviewContent() {
   const { expenseId } = useLocalSearchParams<{ expenseId: string }>();
   const router = useRouter();
+  const cache = useQueryClient();
   const palette = useAppColors();
   const { t } = useI18n();
   const [error, setError] = useState<string>();
@@ -90,6 +91,13 @@ function ReviewContent() {
     },
     onSuccess: async (links) => {
       await successHaptic();
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ['expense', expenseId] }),
+        cache.invalidateQueries({ queryKey: ['groups'] }),
+        query.data?.group_id
+          ? cache.invalidateQueries({ queryKey: ['group', query.data.group_id] })
+          : Promise.resolve(),
+      ]);
       if (links.claims.length) {
         router.replace(`/expense/${expenseId}/share`);
       } else {

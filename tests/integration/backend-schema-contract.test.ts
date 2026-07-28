@@ -54,6 +54,18 @@ const anonymousOcrLearningMigrationSql = readFileSync(
   join(migrationsDirectory, '20260726133139_anonymous_ocr_correction_learning.sql'),
   'utf8',
 ).toLowerCase();
+const debtOffsetMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260728155324_group_debt_offsets_and_public_progress.sql'),
+  'utf8',
+).toLowerCase();
+const debtOffsetEntrypointMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260728161306_enforce_offset_claim_entrypoint.sql'),
+  'utf8',
+).toLowerCase();
+const debtOffsetNotificationMigrationSql = readFileSync(
+  join(migrationsDirectory, '20260728161957_remove_offset_claim_notifications.sql'),
+  'utf8',
+).toLowerCase();
 
 const exposedTables = Array.from(
   migrationSql.matchAll(/create\s+table\s+public\.([a-z][a-z0-9_]*)/g),
@@ -264,6 +276,63 @@ describe('Supabase security contract', () => {
     );
     expect(multiPayerMigrationSql).toMatch(
       /grant execute on function public\.save_expense_contributions\(uuid, jsonb\)[\s\S]*?to authenticated/,
+    );
+  });
+
+  it('nets reverse group debts transactionally and keeps an auditable offset ledger', () => {
+    expect(debtOffsetMigrationSql).toContain('create table public.claim_offsets');
+    expect(debtOffsetMigrationSql).toContain(
+      'alter table public.claim_offsets enable row level security',
+    );
+    expect(debtOffsetMigrationSql).toContain('claim_offsets_select_group_members');
+    expect(debtOffsetMigrationSql).toContain('original_amount_cents');
+    expect(debtOffsetMigrationSql).toContain('pg_advisory_xact_lock');
+    expect(debtOffsetMigrationSql).toContain('private.apply_group_debt_offsets');
+    expect(debtOffsetMigrationSql).toContain("'debt_offset'");
+    expect(debtOffsetMigrationSql).toMatch(
+      /create function public\.create_claims_with_offsets_transaction[\s\S]*?public\.create_claims_transaction[\s\S]*?private\.apply_group_debt_offsets/,
+    );
+    expect(debtOffsetMigrationSql).toMatch(
+      /grant execute on function public\.create_claims_with_offsets_transaction\(uuid, jsonb\)[\s\S]*?to authenticated/,
+    );
+    expect(debtOffsetEntrypointMigrationSql).toMatch(
+      /revoke execute on function public\.create_claims_transaction\(uuid, jsonb\)[\s\S]*?from authenticated/,
+    );
+  });
+
+  it('removes stale notifications when debt offsets fully close a claim', () => {
+    expect(debtOffsetNotificationMigrationSql).toContain(
+      'create or replace function private.remove_fully_offset_claim_notification',
+    );
+    expect(debtOffsetNotificationMigrationSql).toContain(
+      "when (new.event_type = 'debt_offset')",
+    );
+    expect(debtOffsetNotificationMigrationSql).toContain("claim.status = 'cancelled'");
+    expect(debtOffsetNotificationMigrationSql).toContain(
+      "notification.kind = 'claim_requested'",
+    );
+    expect(debtOffsetNotificationMigrationSql).toMatch(
+      /revoke all on function private\.remove_fully_offset_claim_notification\(\)[\s\S]*?from public, anon, authenticated, service_role/,
+    );
+  });
+
+  it('limits group debt totals to members and public progress to the service role', () => {
+    expect(debtOffsetMigrationSql).toContain('create function public.get_group_member_debts');
+    expect(debtOffsetMigrationSql).toContain('not private.is_group_member(p_group_id)');
+    expect(debtOffsetMigrationSql).toContain(
+      "claim.status in ('pending', 'reminder_sent', 'disputed')",
+    );
+    expect(debtOffsetMigrationSql).toMatch(
+      /grant execute on function public\.get_group_member_debts\(uuid\)[\s\S]*?to authenticated/,
+    );
+    expect(debtOffsetMigrationSql).toContain(
+      'create function public.get_public_claim_payment_progress',
+    );
+    expect(debtOffsetMigrationSql).toMatch(
+      /revoke all on function public\.get_public_claim_payment_progress\(text\)[\s\S]*?from public, anon, authenticated, service_role/,
+    );
+    expect(debtOffsetMigrationSql).toMatch(
+      /grant execute on function public\.get_public_claim_payment_progress\(text\)[\s\S]*?to service_role/,
     );
   });
 

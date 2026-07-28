@@ -107,6 +107,7 @@ export type ExpenseSettlement = {
   debtor_participant_id: string;
   creditor_participant_id: string;
   amount_cents: number;
+  original_amount_cents?: number;
 };
 
 export type ClaimStatus = 'pending' | 'received' | 'reminder_sent' | 'disputed' | 'cancelled';
@@ -133,7 +134,11 @@ export type Claim = {
   creditor?: Pick<Participant, 'id' | 'user_id' | 'display_name' | 'avatar_path'> | null;
   expense?: Pick<Expense, 'id' | 'title' | 'merchant_name' | 'occurred_at' | 'currency'> | null;
   disputes?: ClaimDispute[];
-  events?: { event_type: string; created_at: string }[];
+  events?: {
+    event_type: string;
+    created_at: string;
+    metadata?: Record<string, unknown>;
+  }[];
 };
 
 export type ReminderTone = 'soft' | 'neutral' | 'direct';
@@ -198,6 +203,13 @@ export type GroupMember = {
   avatar_path: string | null;
   role: string;
   status: string;
+};
+
+export type GroupMemberDebt = {
+  group_member_id: string;
+  user_id: string | null;
+  amount_cents: number;
+  currency: string;
 };
 
 export type ReputationCard = {
