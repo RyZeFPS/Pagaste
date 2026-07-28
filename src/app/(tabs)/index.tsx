@@ -7,6 +7,7 @@ import { Bell, Camera, ChevronRight } from 'lucide-react-native';
 import {
   AppButton,
   AppText,
+  Avatar,
   AvatarGroup,
   Card,
   EmptyState,
@@ -175,7 +176,9 @@ export default function HomeScreen() {
   const isInitialDataLoading =
     (expenses.isPending && expenses.data === undefined) ||
     (claims.isPending && claims.data === undefined);
-  const firstName = auth.profile?.display_name.trim().split(/\s+/u)[0] || t('home.defaultName');
+  const displayName = auth.profile?.display_name.trim() || t('home.defaultName');
+  const firstName = displayName.split(/\s+/u)[0] || t('home.defaultName');
+  const profileAvatar = auth.profile?.avatar_url ?? auth.profile?.avatar_path;
   const metrics = useMemo(() => {
     const values = claims.data ?? [];
     const receivable = values.filter((claim) => RECEIVABLE_STATUSES.includes(claim.status));
@@ -204,6 +207,7 @@ export default function HomeScreen() {
             style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
           >
             <View
+              testID="home-profile-avatar"
               style={[
                 styles.identityMark,
                 {
@@ -213,7 +217,7 @@ export default function HomeScreen() {
                 },
               ]}
             >
-              <BrandLogo variant="mark" height={42} decorative />
+              <Avatar name={displayName} uri={profileAvatar} size={50} />
             </View>
             <View style={styles.identityCopy}>
               <AppText color={palette.primary} style={styles.greeting}>
@@ -498,7 +502,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 28,
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.09,
     shadowRadius: 10,
